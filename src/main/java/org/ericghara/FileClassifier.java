@@ -22,7 +22,6 @@ class FileClassifier {
     FileClassifier() {
         videoMatcher = getMatcher(VIDEO_EXTS);
         subMatcher = getMatcher(SUB_EXTS);
-
     }
 
     // returns an empty matcher. It needs to be reset with a new char sequence;
