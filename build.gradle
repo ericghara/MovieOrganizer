@@ -1,0 +1,65 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'java-library-distribution'
+}
+
+group 'org.ericghara'
+version '1.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+}
+
+application {
+    // usage example: gradle run -PmainClass=XYZ --args=ARGS --info
+    setMainClass(project.hasProperty("mainClass") ? project.getProperty("mainClass") : "NULL")
+}
+
+run {
+    standardInput = System.in
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class' : 'org.ericghara.SubtitleOrganizer', // jar entry point
+                'Class-Path' : configurations.runtimeClasspath.files.collect {'lib/' + it.getName()}.join(' ') // specifies libraries are stored in lib/ folder
+    }
+}
+
+task fatJar(type: Jar) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': 'org.ericghara.SubtitleOrganizer' // jar entry point
+    }
+    from {
+        configurations.runtimeClasspath.files.collect { it.isDirectory() ? it : zipTree(it) } // adds dirs and unpacks dependency jars
+    } with jar // rolls everything up into a fat jar
+}
+
+distTar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+distZip {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// Task "distZip" added by plugin "java-library-distribution":
+distZip.shouldRunAfter(build)
+build.finalizedBy fatJar
