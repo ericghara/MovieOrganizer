@@ -1,0 +1,17 @@
+# This will create a dummy Movie collection for testing purposes the movie collection will be placed
+# inside of a temporary directory.
+# --------------------------------------------------------------------------------------------------
+# Type : F/D : File/Dir
+# Relative_path: vs test/resources/org/ericghara/
+# Size: in MB, only for files! throws exception for folders
+# Delimiter: whitespace, paths with spaces in them should be enclosed in ""
+# Type  Relative_path   Size(only for files)
+F	junk0.nfo	1
+F	junk1.mp4	5
+F	movie0.mp4	51
+F	sub0.srt	1
+D	dir0/
+F	dir0/junk2.nfo	1
+F	dir0/movie1.mp4	51
+F	dir0/subs/subsForMovie1.srt	1	# Note dir specified implicitly
+F	"dir0/movie right here.mp4"	51	# Note path with spaces

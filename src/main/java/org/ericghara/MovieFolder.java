@@ -112,6 +112,12 @@ class MovieFolder {
         return depth;
     }
 
+    /**
+     * Returns true if the file is contained in this folder, false if not.  Finds any file irrespective of
+     * {@code FileType}.
+     * @param filename must be only the filename, cannot have the parent
+     * @return boolean
+     */
     boolean containsFile(Path filename) {
         FileClassifier.mustBeFilename(filename);
         return getFileType(filename).isPresent();

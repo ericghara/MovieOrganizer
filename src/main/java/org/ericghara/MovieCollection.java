@@ -5,6 +5,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedList;
@@ -27,12 +28,7 @@ public class MovieCollection {
         return rootFolder.getFolderPath();
     }
 
-
-    private int getDepth(Path path) {
-        return path.getNameCount() - getRootPath().getNameCount();
-    }
-
-    private Optional<MovieFolder> openFolder(Path path) {
+    Optional<MovieFolder> openFolder(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         Path rootPath = getRootPath();
         MovieFolder curFolder = null;
@@ -49,8 +45,19 @@ public class MovieCollection {
         return Optional.ofNullable(curFolder);
     }
 
-    private boolean validFolderPath(Path path) {
+    boolean validFolderPath(Path path) {
         return openFolder(path).isPresent();
+    }
+
+    boolean validFilePath(Path filePath) {
+        Path parent = filePath.getParent();
+        Path filename = filePath.getFileName();
+        Optional<MovieFolder> folder = openFolder(parent);
+        return folder.isPresent() && folder.get().containsFile(filename);
+    }
+
+    private int getDepth(Path path) {
+        return path.getNameCount() - getRootPath().getNameCount();
     }
 
     private static class Collector {
@@ -83,7 +90,7 @@ public class MovieCollection {
             }
         }
 
-        //Note override
+        //Note override can't use outer class getDepth because no rootFolder has been defined
         private int getDepth(Path path) {
             return path.getNameCount() - rootPath.getNameCount();
         }
@@ -156,7 +163,7 @@ public class MovieCollection {
         Stream<Path> walkStream() {
             Stream.Builder<Path> walkStream = Stream.builder();
             try {
-                // Custom SimpleFileVisitor which suppresses IOExceptions (unlike Files.walk() )
+                // Custom SimpleFileVisitor which suppresses IOExceptions (unlike Files.walk(Path) )
                 Files.walkFileTree( rootPath,new SimpleFileVisitor<Path>() {
                             @Override
                             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
@@ -202,7 +209,7 @@ public class MovieCollection {
 
     public static void main(String[] args) {
         String pathString = args[0];
-        Path query = Path.of("/mnt/media/Media/Movies/Broadcast.News.1987.1080p.BluRay.H264.AAC-RARBG/Subs/");
+        Path query = Paths.get("/mnt/media/Media/Movies/Broadcast.News.1987.1080p.BluRay.H264.AAC-RARBG/Subs/");
         MovieCollection col = new MovieCollection(pathString);
         System.out.println(col.rootFolder);
         System.out.println(col.openFolder(query));
