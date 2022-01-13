@@ -2,58 +2,39 @@ package org.ericghara;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
+@TestInstance(Lifecycle.PER_CLASS)
 public class MovieCollectionTest {
-    private static final String testCsv = "Example.csv";
+    final static String TEST_CSV = "Example.csv";
+    /*These tests can use a static tmpDir to avoid nuking the hard drive with a lot of repetitive IO*/
+    static MovieCollection collection;
+    static TestMovieDir testMovieDir;
     @TempDir
-    Path tmpDir; // literally a dir created in /tmp by JUnit
-    TestMovieDir testMovieDir;
+    static Path tmpDir; // note: Junit waits until after constructor to inject TempDir path
 
-
-    @BeforeEach
-    void setup() {
-        tmpDir = Paths.get("").toAbsolutePath();
-        testMovieDir = new TestMovieDir(testCsv, tmpDir.toAbsolutePath());
+    @BeforeAll
+    static void setup() {
+        testMovieDir = new TestMovieDir(TEST_CSV, tmpDir);
+        collection = new MovieCollection(tmpDir.toString() );
     }
 
-    @Nested
-    @TestInstance(Lifecycle.PER_CLASS)
-    static class ReadOnlyTests { // revisit static nested declaration due to warning
-        /*These tests can use a static tmpDir to avoid nuking the hard drive with a lot of repetitive IO*/
-        static MovieCollection collection;
-        @TempDir
-        static Path tmpDir;
+    @Test
+    void validFolderPathTest() {
+        Iterable<Path> folders = testMovieDir.getDirs();
+        folders.forEach( (p) ->
+                Assertions.assertTrue(collection.validFolderPath(p) ) );
+    }
 
-        @BeforeAll
-        static void setup() {
-            TestMovieDir testMovieDir = new TestMovieDir(testCsv, tmpDir);
-            collection = new MovieCollection(tmpDir.toString() );
-        }
-
-        @Test
-        void validFolderPathTest() {
-            Path absPath = collection.getRootPath().resolve("dir0");
-            Assertions.assertTrue(collection.validFolderPath(absPath));
-        }
-
-        @Test
-        void validFilePathTest() {
-            Path absPath = collection.getRootPath().resolve("dir0/subs/subsForMovie1.srt");
-            Assertions.assertTrue(collection.validFilePath(absPath) );
-        }
-
-
-
-
-
+    @Test
+    void validFilePathTest() {
+        Iterable<Path> files = testMovieDir.getFiles();
+        files.forEach((p) ->
+                Assertions.assertTrue(collection.validFilePath(p)));
     }
 }

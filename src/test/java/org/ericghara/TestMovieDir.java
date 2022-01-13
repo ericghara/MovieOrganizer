@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedList;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,46 +18,64 @@ import java.util.regex.Pattern;
  */
 public class TestMovieDir {
 
-    static String hashCommentsRegEx = "(\\b|^)\\s*#.*$"; 
-    static String whitespaceNotInQuotesRegEx = "\\s+(?=([^\"]*\"[^\"]*\")*[^\"]*$)"; 
-    static String justaDRegEx = "^(d|D)$";
-    static String justaFRegEx = "^(f|F)$";
-    static String textInQuotesRegEx = "(?<=^\").+(?=\"$)";
+    // match all text after # and all leading whitespace
+    private final String hashCommentsRegEx = "(\\b|^)\\s*#.*$";
+    private final Matcher hashComments = compileMatcher(hashCommentsRegEx);
+    // match whitespace with 0 or even number of " ahead
+    private final String whitespaceNotInQuotesRegEx = "\\s+(?=([^\"]*\"[^\"]*\")*[^\"]*$)";
+    private final Matcher whitespaceNotInQuotes = compileMatcher(whitespaceNotInQuotesRegEx);
+    // matches a line consisting of d or D
+    private final String justaDRegEx = "^(d|D)$";
+    private final Matcher justaD = compileMatcher(justaDRegEx);
+    // matches a line consisting of f or F
+    private final String justaFRegEx = "^(f|F)$";
+    private final Matcher justaF = compileMatcher(justaFRegEx);
+    // match text between quotes which appear at the beginning and end of the line
+    private final String textInQuotesRegEx = "(?<=^\").+(?=\"$)";
+    private final Matcher textInQuotes = compileMatcher(textInQuotesRegEx);
+            
+    private final Path testDir;
+    private final LinkedList<Path> files = new LinkedList<>();
+    private final LinkedList<Path> dirs = new LinkedList<>();
 
-    private final Matcher hashComments, whitespaceNotInQuotes, justaD, justaF, textInQuotes;
 
-    Path testDir;
-
+    /**
+     * Initializes a Test Movie Dir from a csv template.  The location of the movie dir is the resources directory.
+     * @param csvName the filename (not full path) of the csv file in the test resources directory
+     */
     public TestMovieDir(String csvName) {
         File csvFile = getResourceFile(csvName);
         Scanner csvScanner = getFileScanner(csvFile);
         testDir = csvFile.toPath()
                               .toAbsolutePath()
                               .getParent();
-        hashComments = compileMatcher(hashCommentsRegEx);  // match all text after # and all leading whitespace
-        whitespaceNotInQuotes = compileMatcher(whitespaceNotInQuotesRegEx);  // match whitespace with 0 or even number of " ahead
-        justaD = compileMatcher(justaDRegEx); // matches "D" or "d" only
-        justaF = compileMatcher(justaFRegEx); // matches "F" of "f" only
-        textInQuotes = compileMatcher(textInQuotesRegEx); // matches text only between quotes that start and end a string
-
         parse(csvScanner);
     }
 
+    /**
+     * Initializes a Test Movie Dir from a csv template. The location of the movie dir is defined by the testDir argument.
+     *
+     * @param csvName the filename (not full path) of the csv file in the test resources directory
+     * @param testDir absolute path to the desired directory
+     */
     public TestMovieDir(String csvName, Path testDir) {
+        mustBeDir(testDir);
         File csvFile = getResourceFile(csvName);
         Scanner csvScanner = getFileScanner(csvFile);
         this.testDir = testDir;
-        hashComments = compileMatcher("(\\b|^)\\s*#.*$");  // match all text after # and all leading whitespace
-        whitespaceNotInQuotes = compileMatcher("\\s+(?=([^\"]*\"[^\"]*\")*[^\"]*$)");  // match whitespace with 0 or even number of " ahead
-        justaD = compileMatcher("^(d|D)$"); // matches "D" or "d" only
-        justaF = compileMatcher("^(f|F)$"); // matches "F" of "f" only
-        textInQuotes = compileMatcher("(?<=^\").+(?=\"$)"); // matches text only between quotes that start and end a string
-
         parse(csvScanner);
     }
 
     public Path getTestDir() {
         return testDir;
+    }
+
+    public Iterable<Path> getFiles() {
+        return files;
+    }
+
+    public LinkedList<Path> getDirs() {
+        return dirs;
     }
 
     private Scanner getFileScanner(File file) {
@@ -93,12 +112,14 @@ public class TestMovieDir {
                 continue;
             }
             if (justaD.reset(splitLine[0]).matches() && splitLine.length == 2 ) {
-                createDir(splitLine[1]);
+                Path dirPath = createDir(splitLine[1]);
+                dirs.addLast(dirPath);
             }
             else if (justaF.reset(splitLine[0]).matches() && splitLine.length == 3) {
                 String pathString = splitLine[1];
                 int sizeMB = Integer.parseInt(splitLine[2]);
-                createFile(pathString, sizeMB);
+                Path filePath = createFile(pathString, sizeMB);
+                files.addLast(filePath);
             }
             else {
                 throw new IllegalArgumentException("Couldn't parse line: " + i + ".");
@@ -115,18 +136,30 @@ public class TestMovieDir {
         }
     }
 
-    private void createDir(String pathString) {
+
+    /**
+     * Creates a directory at the given relative path.  If the parent path to the directory does not yet exist,
+     * directories are created in order to complete the path.  The absolute path to the directory is constructed
+     * by merging {@code testDir}'s path with the {@code pathString}.
+     * @param pathString relative location of the new directory
+     * @return absolute path to the directory
+     */
+    private Path createDir(String pathString) {
         Path absPath = testDir.resolve(pathString);
         createDir(absPath);
+        return absPath;
     }
 
-    private void mustBeAbsolute(Path path) {
-        if (!path.isAbsolute()) {
-            throw new IllegalArgumentException("Received a path that was not absolute " + path + ".");
-        }
-    }
 
-    private void createFile(String pathString, int sizeMB) {
+    /**
+     * Creates file of specified size in the given relative path.  The absolute path is constructed by merging
+     * the {@code testDir} path with the given {@code pathString}.  Any new directories required to create a file
+     * at the specified path are created if the parent path does not yet exist.
+     * @param pathString relative file path
+     * @param sizeMB size of the file to create in MB
+     * @return the absolute path to the file
+     */
+    private Path createFile(String pathString, int sizeMB) {
         Path filePath = testDir.resolve(Paths.get(pathString) );
         Path parentPath = filePath.getParent();
         try {
@@ -148,10 +181,25 @@ public class TestMovieDir {
         } catch (Exception e) {
                 throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath );
             }
+        return filePath;
     }
 
     private static Matcher compileMatcher(String regEx) {
         return Pattern.compile(regEx).matcher("");
+    }
+
+    private void mustBeAbsolute(Path path) {
+        if (!path.isAbsolute()) {
+            throw new IllegalArgumentException("Received a path that was not absolute " + path + ".");
+        }
+    }
+
+    private void mustBeDir(Path path) {
+        mustBeAbsolute(path);
+        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) ) {
+            throw new IllegalArgumentException("Expected an existing directory but it does not exist: "
+                    + path + ".");
+        }
     }
 
     // Simple test.  Note this will write to the file system into the resources dir, if run under gradle that will be

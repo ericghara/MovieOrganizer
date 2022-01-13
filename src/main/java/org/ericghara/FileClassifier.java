@@ -104,6 +104,7 @@ class FileClassifier {
      * @return tue if file size > sizeMB; false if file size <= sizeMB;
      */
     boolean fileSizeLargerThan(Path path, int sizeMB) {
+        final int ONE_MB = 1_048_576; // bytes per MB
         mustBeAbsolutePath(path);
         long sizeBytes;
         try {
@@ -111,7 +112,7 @@ class FileClassifier {
         } catch (Exception e) {
             throw new IllegalArgumentException("Couldn't open file: " + path + ".");
         }
-        return sizeBytes/1_000_000 > sizeMB;
+        return sizeBytes/ONE_MB > sizeMB;
     }
 
 //        boolean unusualFile(Path pathToFile) {

@@ -31,16 +31,11 @@ public class MovieCollection {
     Optional<MovieFolder> openFolder(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         Path rootPath = getRootPath();
-        MovieFolder curFolder = null;
-        if (path.startsWith(rootPath ) ) {
-            curFolder = rootFolder;
-            Path relPath = rootPath.relativize(path);
-            for (Path subPath : relPath) {
-                if (Objects.isNull(curFolder)) {
-                    break;
-                }
-                curFolder = curFolder.getFolder(subPath);
-            }
+        MovieFolder curFolder = path.startsWith(rootPath) ? rootFolder : null;
+        // Note: a for each loop of relativized paths doesn't work because path "" is considered to have a length 1
+        for (int i = rootPath.getNameCount(); i < path.getNameCount()
+                && Objects.nonNull(curFolder); i++) {
+            curFolder = curFolder.getFolder(path.getName(i) );
         }
         return Optional.ofNullable(curFolder);
     }
@@ -164,7 +159,7 @@ public class MovieCollection {
             Stream.Builder<Path> walkStream = Stream.builder();
             try {
                 // Custom SimpleFileVisitor which suppresses IOExceptions (unlike Files.walk(Path) )
-                Files.walkFileTree( rootPath,new SimpleFileVisitor<Path>() {
+                Files.walkFileTree( rootPath,new SimpleFileVisitor<>() {
                             @Override
                             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                                 try {
