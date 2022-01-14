@@ -1,13 +1,11 @@
 package org.ericghara;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
@@ -42,65 +40,33 @@ class MovieFolder {
         Arrays.asList(FileType.values()).forEach((v) -> allFiles.add(new HashSet<>()));
     }
 
-    HashMap<Path, MovieFolder> getFolders() {
-        return folders;
+    /**
+     * Returns true if the file is contained in this folder, false if not.  Finds any file irrespective of
+     * {@code FileType}.
+     * @param filename must be only the filename, cannot have the parent
+     * @return boolean
+     */
+    public boolean containsFile(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        return getFileType(filename).isPresent();
     }
 
-    void addFolder(MovieFolder folder) {
-        Path folderName = folder.getFolderPath().getFileName();
-        folders.put(folderName, folder);
+    public boolean containsFile(Path filename, FileType type) {
+        FileClassifier.mustBeFilename(filename);
+        return allFiles.get(type.id() ).contains(filename);
+    }
+
+    public boolean containsFolder(Path folderName) {
+        FileClassifier.mustBeFilename(folderName);
+        return folders.containsKey(folderName);
     }
 
     public int getNumFolders() {
         return folders.size();
     }
 
-    void addSub(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getSubs().add(filename);
-    }
-
-    private HashSet<Path> getSubs() {
-        return allFiles.get(FileType.Sub.id());
-    }
-
-    int getNumSubs() {
-        return getSubs().size();
-    }
-
-    void addMovie(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getMovies().add(filename);
-    }
-
-    private HashSet<Path> getMovies() {
-        return allFiles.get(FileType.Movie.id());
-    }
-
     public int getNumMovies() {
         return getMovies().size();
-    }
-
-    void addUnusual(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getUnusuals().add(filename);
-    }
-
-    private HashSet<Path> getUnusuals() {
-        return allFiles.get(FileType.Unusual.id());
-    }
-
-    public int getNumUnusuals() {
-        return getUnusuals().size();
-    }
-
-    void addPossiblyJunk(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getPossiblyJunk().add(filename);
-    }
-
-    private HashSet<Path> getPossiblyJunk() {
-        return allFiles.get(FileType.PossiblyJunk.id());
     }
 
     public int getNumPossiblyJunk() {
@@ -115,39 +81,22 @@ class MovieFolder {
         return depth;
     }
 
-    /**
-     * Returns true if the file is contained in this folder, false if not.  Finds any file irrespective of
-     * {@code FileType}.
-     * @param filename must be only the filename, cannot have the parent
-     * @return boolean
-     */
-    public boolean containsFile(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        return getFileType(filename).isPresent();
+    @Override
+    public String toString(){
+        return folderPath.toString();
     }
 
-    public boolean containsFolder(Path folderName) {
-        FileClassifier.mustBeFilename(folderName);
-        return folders.containsKey(folderName);
+    HashMap<Path, MovieFolder> getFolders() {
+        return folders;
     }
 
-    Optional<MovieFolder> getFolder(Path folderName) {
-        FileClassifier.mustBeFilename(folderName);
-        return Optional.ofNullable(folders.get(folderName) );
+    void addFolder(MovieFolder folder) {
+        Path folderName = folder.getFolderPath().getFileName();
+        folders.put(folderName, folder);
     }
 
-    void deleteFolder(Path folderName) {
-        Path absPath = toAbsolutePath(folderName);
-        if (!containsFolder(folderName) ) {
-            throw new IllegalArgumentException("Was unable to locate the folder for deletion: " + absPath );
-        }
-        try {
-            Files.delete(absPath);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("The Directory " + absPath +
-                    " could not be deleted, due to a low level error," +
-                    "refer to the stack trace for more details." );
-        }
+    public int getNumUnusuals() {
+        return getUnusuals().size();
     }
 
     /**
@@ -175,9 +124,80 @@ class MovieFolder {
         final FileType[] fileTypes = FileType.values();
         final int NumFileTypes = fileTypes.length;
         OptionalInt id = IntStream.range(0, NumFileTypes)
-                                    .filter( (i) -> allFiles.get(i).contains(filename) )
-                                    .findFirst();
+                .filter( (i) -> allFiles.get(i).contains(filename) )
+                .findFirst();
         return id.isPresent() ? Optional.of(fileTypes[id.getAsInt()] ) : Optional.empty();
+    }
+
+
+    boolean addFile(Path filename, FileType type) {
+        FileClassifier.mustBeFilename(filename);
+        return allFiles.get(type.id() ).add(filename);
+    }
+
+    void addSub(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        getSubs().add(filename);
+    }
+
+    private HashSet<Path> getSubs() {
+        return allFiles.get(FileType.Sub.id());
+    }
+
+    int getNumSubs() {
+        return getSubs().size();
+    }
+
+    void addMovie(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        getMovies().add(filename);
+    }
+
+    private HashSet<Path> getMovies() {
+        return allFiles.get(FileType.Movie.id());
+    }
+
+
+
+    void addUnusual(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        getUnusuals().add(filename);
+    }
+
+    private HashSet<Path> getUnusuals() {
+        return allFiles.get(FileType.Unusual.id());
+    }
+
+
+
+    void addPossiblyJunk(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        getPossiblyJunk().add(filename);
+    }
+
+    private HashSet<Path> getPossiblyJunk() {
+        return allFiles.get(FileType.PossiblyJunk.id());
+    }
+
+
+
+    Optional<MovieFolder> getFolder(Path folderName) {
+        FileClassifier.mustBeFilename(folderName);
+        return Optional.ofNullable(folders.get(folderName) );
+    }
+
+    void deleteFolder(Path folderName) {
+        Path absPath = toAbsolutePath(folderName);
+        if (!containsFolder(folderName) ) {
+            throw new IllegalArgumentException("Was unable to locate the folder for deletion: " + absPath );
+        }
+        try {
+            Files.delete(absPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("The Directory " + absPath +
+                    " could not be deleted, due to a low level error," +
+                    "refer to the stack trace for more details." );
+        }
     }
 
     /**
@@ -205,10 +225,4 @@ class MovieFolder {
         allFiles.forEach( (set) -> set.forEach(builder::add) );
         return builder.build();
     }
-
-    @Override
-    public String toString(){
-        return folderPath.toString();
-    }
-
 }

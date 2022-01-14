@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedList;
 import java.util.Objects;
@@ -28,6 +30,17 @@ public class MovieCollection {
         return rootFolder.getFolderPath();
     }
 
+    public boolean containsFolder(Path path) {
+        return openFolder(path).isPresent();
+    }
+
+    public boolean containsFile(Path filePath) {
+        Path parent = filePath.getParent();
+        Path filename = filePath.getFileName();
+        Optional<MovieFolder> folder = openFolder(parent);
+        return folder.isPresent() && folder.get().containsFile(filename);
+    }
+
     Optional<MovieFolder> openFolder(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         Path rootPath = getRootPath();
@@ -41,31 +54,46 @@ public class MovieCollection {
         return curFolder;
     }
 
-    boolean validFolderPath(Path path) {
-        return openFolder(path).isPresent();
+    MovieFolder openFolder(Path p, String exceptionMsg)  {
+        return openFolder(p).orElseThrow( () -> new IllegalArgumentException(exceptionMsg) );
     }
 
     void deleteFolder(Path path) {
         Path parent = path.getParent();
         Path folderName = path.getFileName();
-        MovieFolder parentFolder = openFolder(parent).orElseThrow( () ->
-                new IllegalArgumentException("Could not locate the folder: " + path ) );
+        MovieFolder parentFolder = openFolder(parent, "Could not locate the folder: " + path );
         parentFolder.deleteFolder(folderName);
-    }
-
-    boolean validFilePath(Path filePath) {
-        Path parent = filePath.getParent();
-        Path filename = filePath.getFileName();
-        Optional<MovieFolder> folder = openFolder(parent);
-        return folder.isPresent() && folder.get().containsFile(filename);
     }
 
     void deleteFile(Path path) {
         Path parent = path.getParent();
         Path filename = path.getFileName();
-        MovieFolder folder = openFolder(parent).orElseThrow( () -> new IllegalArgumentException(
-                "Unable to delete file because couldn't resolve the path: " + path) );
+        MovieFolder folder = openFolder(parent, 
+                "Unable to delete file because couldn't resolve the path: " + path);
         folder.deleteFile(filename);
+    }
+
+    void copyFile(Path source, Path destination) {
+        Path sourceParent = source.getParent();
+        Path sourceFileName = source.getFileName();
+        MovieFolder sourceFolder = openFolder(sourceParent, 
+                "Unable to copy file because couldn't resolve the source path: " + source);
+        Path destinationParent = destination.getParent();
+        Path destinationFileName = destination.getFileName();
+        MovieFolder destinationFolder = openFolder(destinationParent,
+                "Unable to copy file because couldn't resolve the destination path: " + destination);
+        FileType type = sourceFolder.getFileType(sourceFileName).orElseThrow( () ->
+                new IllegalArgumentException("The source file could not be located: " + source) );
+        if (destinationFolder.containsFile(destinationFileName) ) {  // filesystem io
+            throw new IllegalArgumentException("The destination folder already contains the file: " + source);
+        }
+        try {
+            Files.copy(source, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("A low level error occured while copying " +
+                    source +" to " + destination  + " - check file permissions.");
+        }
+        destinationFolder.addFile(destinationFileName, type); // update MovieFolder object
     }
 
     private int getDepth(Path path) {
