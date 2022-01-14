@@ -200,16 +200,6 @@ class MovieFolder {
         }
     }
 
-    /**
-     * Deletes the specified directory
-     * @param dirname name of the directory to be deleted, path must not have any other components
-     */
-    void deleteDir(Path dirname) {
-        FileClassifier.mustBeFilename(dirname);
-
-
-    }
-
     Stream<Path> getAllFiles() {
         Stream.Builder<Path> builder = Stream.builder();
         allFiles.forEach( (set) -> set.forEach(builder::add) );
