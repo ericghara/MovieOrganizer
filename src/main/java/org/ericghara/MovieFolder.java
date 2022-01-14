@@ -1,10 +1,13 @@
 package org.ericghara;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
@@ -48,7 +51,7 @@ class MovieFolder {
         folders.put(folderName, folder);
     }
 
-    int getNumFolders() {
+    public int getNumFolders() {
         return folders.size();
     }
 
@@ -57,7 +60,7 @@ class MovieFolder {
         getSubs().add(filename);
     }
 
-    HashSet<Path> getSubs() {
+    private HashSet<Path> getSubs() {
         return allFiles.get(FileType.Sub.id());
     }
 
@@ -70,11 +73,11 @@ class MovieFolder {
         getMovies().add(filename);
     }
 
-    HashSet<Path> getMovies() {
+    private HashSet<Path> getMovies() {
         return allFiles.get(FileType.Movie.id());
     }
 
-    int getNumMovies() {
+    public int getNumMovies() {
         return getMovies().size();
     }
 
@@ -83,11 +86,11 @@ class MovieFolder {
         getUnusuals().add(filename);
     }
 
-    HashSet<Path> getUnusuals() {
+    private HashSet<Path> getUnusuals() {
         return allFiles.get(FileType.Unusual.id());
     }
 
-    int getNumUnusuals() {
+    public int getNumUnusuals() {
         return getUnusuals().size();
     }
 
@@ -96,19 +99,19 @@ class MovieFolder {
         getPossiblyJunk().add(filename);
     }
 
-    HashSet<Path> getPossiblyJunk() {
+    private HashSet<Path> getPossiblyJunk() {
         return allFiles.get(FileType.PossiblyJunk.id());
     }
 
-    int getNumPossiblyJunk() {
+    public int getNumPossiblyJunk() {
         return getPossiblyJunk().size();
     }
 
-    Path getFolderPath() {
+    public Path getFolderPath() {
         return folderPath;
     }
 
-    int getDepth() {
+    public int getDepth() {
         return depth;
     }
 
@@ -118,41 +121,93 @@ class MovieFolder {
      * @param filename must be only the filename, cannot have the parent
      * @return boolean
      */
-    boolean containsFile(Path filename) {
+    public boolean containsFile(Path filename) {
         FileClassifier.mustBeFilename(filename);
         return getFileType(filename).isPresent();
     }
 
-    boolean containsFolder(Path folderName) {
+    public boolean containsFolder(Path folderName) {
         FileClassifier.mustBeFilename(folderName);
         return folders.containsKey(folderName);
     }
 
-    MovieFolder getFolder(Path folderName) {
+    Optional<MovieFolder> getFolder(Path folderName) {
         FileClassifier.mustBeFilename(folderName);
-        return folders.get(folderName);
+        return Optional.ofNullable(folders.get(folderName) );
     }
 
-    Path toAbsolutePath(Path filename) {
+    void deleteFolder(Path folderName) {
+        Path absPath = toAbsolutePath(folderName);
+        if (!containsFolder(folderName) ) {
+            throw new IllegalArgumentException("Was unable to locate the folder for deletion: " + absPath );
+        }
+        try {
+            Files.delete(absPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("The Directory " + absPath +
+                    " could not be deleted, due to a low level error," +
+                    "refer to the stack trace for more details." );
+        }
+    }
+
+    /**
+     * Reports if this movie folder contains no files and no subfolders.
+     * @return true if empty, false if contains fails and/or subfolders
+     */
+    public boolean isEmpty() {
+        int numFiles = allFiles.stream().map(HashSet::size).reduce(0, Integer::sum);
+        return numFiles == 0 && folders.size() == 0;
+    }
+
+    public Path toAbsolutePath(Path filename) {
         FileClassifier.mustBeFilename(filename);
         return folderPath.resolve(filename);
     }
 
     //checks if this dir is a parent of the path.  Must provide an absolute path
-    boolean fileBelongsHere(Path path) {
+    public boolean fileBelongsHere(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         return path.getParent().equals(folderPath);
     }
 
-    Optional<FileType> getFileType(Path filename) {
+    public Optional<FileType> getFileType(Path filename) {
         FileClassifier.mustBeFilename(filename);
-        final FileType[] FileTypes = FileType.values();
-        final int NumFileTypes = FileTypes.length;
+        final FileType[] fileTypes = FileType.values();
+        final int NumFileTypes = fileTypes.length;
         OptionalInt id = IntStream.range(0, NumFileTypes)
-                                    .filter( (i) -> allFiles.get(i)
-                                                            .contains(filename) )
+                                    .filter( (i) -> allFiles.get(i).contains(filename) )
                                     .findFirst();
-        return id.isPresent() ? Optional.of(FileTypes[id.getAsInt()] ) : Optional.empty();
+        return id.isPresent() ? Optional.of(fileTypes[id.getAsInt()] ) : Optional.empty();
+    }
+
+    /**
+     * Deletes the specified file.
+     * @param filename name of file to be deleted, path must not have any other components
+     */
+    void deleteFile(Path filename) {
+        FileClassifier.mustBeFilename(filename);
+        boolean success = Stream.of(FileType.values())
+                                .anyMatch( (type) -> allFiles.get(type.id()).remove(filename));
+        Path absPath = toAbsolutePath(filename);
+        if (!success) {
+            throw new IllegalArgumentException("Could not locate the file:"
+                    + absPath );
+        }
+        try {
+            Files.delete(absPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Could not delete: " + absPath);
+        }
+    }
+
+    /**
+     * Deletes the specified directory
+     * @param dirname name of the directory to be deleted, path must not have any other components
+     */
+    void deleteDir(Path dirname) {
+        FileClassifier.mustBeFilename(dirname);
+
+
     }
 
     Stream<Path> getAllFiles() {

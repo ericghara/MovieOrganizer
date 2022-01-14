@@ -12,8 +12,8 @@ class FileClassifier {
 
     private static String[] VIDEO_EXTS = {"ASX", "GXF", "M2V", "M3U", "M4V", "MPEG1", "MPEG2", "MTS", "MXF",
             "OGM", "PLS", "BUP", "B4S", "CUE", "DIVX", "DV", "FLV", "M1V", "M2TS", "MKV", "MOV", "MPEG4",
-            "TS", "VLC", "VOB", "XSPF", "DAT", "BIN", "IFO", "3G2", "MPEG", "MPG", "OGG", "3GP", "WMV",
-            "AVI", "ASF", "MP4", "M4P"};
+            "TS", "VLC", "VOB", "XSPF", "DAT", "IFO", "3G2", "MPEG", "MPG", "OGG", "3GP", "WMV", "AVI", "ASF",
+            "MP4", "M4P"};
     private static String[] SUB_EXTS = {"SRT", "SUB", "IDX"};
 
     private Matcher videoMatcher;

@@ -38,7 +38,7 @@ test {
 
 jar {
     manifest {
-        attributes 'Main-Class' : 'org.ericghara.SubtitleOrganizer', // jar entry point
+        attributes 'Main-Class' : 'org.ericghara.MovieOrganizer', // jar entry point
                 'Class-Path' : configurations.runtimeClasspath.files.collect {'lib/' + it.getName()}.join(' ') // specifies libraries are stored in lib/ folder
     }
 }
@@ -46,7 +46,7 @@ jar {
 task fatJar(type: Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes 'Main-Class': 'org.ericghara.SubtitleOrganizer' // jar entry point
+        attributes 'Main-Class': 'org.ericghara.MovieOrganizer' // jar entry point
     }
     from {
         configurations.runtimeClasspath.files.collect { it.isDirectory() ? it : zipTree(it) } // adds dirs and unpacks dependency jars

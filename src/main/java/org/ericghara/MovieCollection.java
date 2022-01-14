@@ -31,17 +31,26 @@ public class MovieCollection {
     Optional<MovieFolder> openFolder(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         Path rootPath = getRootPath();
-        MovieFolder curFolder = path.startsWith(rootPath) ? rootFolder : null;
+        Optional <MovieFolder> curFolder = path.startsWith(rootPath) ? Optional.of(rootFolder) : Optional.empty();
         // Note: a for each loop of relativized paths doesn't work because path "" is considered to have a length 1
         for (int i = rootPath.getNameCount(); i < path.getNameCount()
-                && Objects.nonNull(curFolder); i++) {
-            curFolder = curFolder.getFolder(path.getName(i) );
+                && curFolder.isPresent(); i++) {
+            curFolder = curFolder.get()
+                                 .getFolder(path.getName(i) );
         }
-        return Optional.ofNullable(curFolder);
+        return curFolder;
     }
 
     boolean validFolderPath(Path path) {
         return openFolder(path).isPresent();
+    }
+
+    void deleteFolder(Path path) {
+        Path parent = path.getParent();
+        Path folderName = path.getFileName();
+        MovieFolder parentFolder = openFolder(parent).orElseThrow( () ->
+                new IllegalArgumentException("Could not locate the folder: " + path ) );
+        parentFolder.deleteFolder(folderName);
     }
 
     boolean validFilePath(Path filePath) {
@@ -49,6 +58,14 @@ public class MovieCollection {
         Path filename = filePath.getFileName();
         Optional<MovieFolder> folder = openFolder(parent);
         return folder.isPresent() && folder.get().containsFile(filename);
+    }
+
+    void deleteFile(Path path) {
+        Path parent = path.getParent();
+        Path filename = path.getFileName();
+        MovieFolder folder = openFolder(parent).orElseThrow( () -> new IllegalArgumentException(
+                "Unable to delete file because couldn't resolve the path: " + path) );
+        folder.deleteFile(filename);
     }
 
     private int getDepth(Path path) {
@@ -202,11 +219,21 @@ public class MovieCollection {
 
     }
 
+    /**
+     * Simple test client that takes two arguments:
+     * <ol>
+     *     <li>Path to movie folder (may be relative or absolute)</li>
+     *     <li>The path to a folder within the movie folder (may be relative or absolute)</li>
+     * </ol>
+     * Prints to std out the movie folder directory
+     * @param args path to a movie folder and a path to a folder within that folder
+     */
     public static void main(String[] args) {
         String pathString = args[0];
-        Path query = Paths.get("/mnt/media/Media/Movies/Broadcast.News.1987.1080p.BluRay.H264.AAC-RARBG/Subs/");
+        Path query = Paths.get(args[1]);
         MovieCollection col = new MovieCollection(pathString);
+        Path absQuery = query.isAbsolute() ? query : col.getRootPath().resolve(query);
         System.out.println(col.rootFolder);
-        System.out.println(col.openFolder(query));
+        System.out.println(col.openFolder(absQuery));
     }
 }

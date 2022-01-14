@@ -2,6 +2,7 @@ package org.ericghara;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -24,33 +25,13 @@ public class TestMovieDir {
     // match whitespace with 0 or even number of " ahead
     private final String whitespaceNotInQuotesRegEx = "\\s+(?=([^\"]*\"[^\"]*\")*[^\"]*$)";
     private final Matcher whitespaceNotInQuotes = compileMatcher(whitespaceNotInQuotesRegEx);
-    // matches a line consisting of d or D
-    private final String justaDRegEx = "^(d|D)$";
-    private final Matcher justaD = compileMatcher(justaDRegEx);
-    // matches a line consisting of f or F
-    private final String justaFRegEx = "^(f|F)$";
-    private final Matcher justaF = compileMatcher(justaFRegEx);
     // match text between quotes which appear at the beginning and end of the line
     private final String textInQuotesRegEx = "(?<=^\").+(?=\"$)";
     private final Matcher textInQuotes = compileMatcher(textInQuotesRegEx);
             
-    private final Path testDir;
-    private final LinkedList<Path> files = new LinkedList<>();
-    private final LinkedList<Path> dirs = new LinkedList<>();
-
-
-    /**
-     * Initializes a Test Movie Dir from a csv template.  The location of the movie dir is the resources directory.
-     * @param csvName the filename (not full path) of the csv file in the test resources directory
-     */
-    public TestMovieDir(String csvName) {
-        File csvFile = getResourceFile(csvName);
-        Scanner csvScanner = getFileScanner(csvFile);
-        testDir = csvFile.toPath()
-                              .toAbsolutePath()
-                              .getParent();
-        parse(csvScanner);
-    }
+    private final Path testDir; // parent which all relative paths in csv are resolved against
+    private final LinkedList<Path> files = new LinkedList<>(); // all files successfully written
+    private final LinkedList<Path> dirs = new LinkedList<>(); // all dirs successfully written
 
     /**
      * Initializes a Test Movie Dir from a csv template. The location of the movie dir is defined by the testDir argument.
@@ -92,7 +73,7 @@ public class TestMovieDir {
     private File getResourceFile(String csvName) {
         File csv;
         try {
-            URI csvPath = this.getClass().getResource("Example.csv").toURI();
+            URI csvPath = this.getClass().getResource(csvName).toURI();
             csv = new File(csvPath);
         } catch (Exception e) {
             e.printStackTrace();
@@ -103,19 +84,19 @@ public class TestMovieDir {
 
     private void parse(Scanner csvScanner) {
         for (int i = 0; csvScanner.hasNextLine(); i++) {
-            String line = hashComments.reset(csvScanner.nextLine()).replaceAll("");
-            String[] splitLine = whitespaceNotInQuotes.pattern().split(line);
-            if (splitLine.length >= 2 && textInQuotes.reset(splitLine[1]).find() ) { // remove quotes
-                splitLine[1] = textInQuotes.group();
+            String line = hashComments.reset(csvScanner.nextLine()).replaceAll(""); // strip comments
+            String[] splitLine = whitespaceNotInQuotes.pattern().split(line); // split columns
+            if (splitLine.length >= 2 && textInQuotes.reset(splitLine[1]).find() ) {
+                splitLine[1] = textInQuotes.group(); // remove quotes
             }
-            if (splitLine.length == 1 && splitLine[0].isEmpty()) {
+            if (splitLine.length == 1 && splitLine[0].isEmpty()) { // ignore empty line (or a stripped comment line)
                 continue;
             }
-            if (justaD.reset(splitLine[0]).matches() && splitLine.length == 2 ) {
+            if (splitLine[0].equalsIgnoreCase("D") && splitLine.length == 2 ) { // directory
                 Path dirPath = createDir(splitLine[1]);
                 dirs.addLast(dirPath);
             }
-            else if (justaF.reset(splitLine[0]).matches() && splitLine.length == 3) {
+            else if (splitLine[0].equalsIgnoreCase("F") && splitLine.length == 3) { // file
                 String pathString = splitLine[1];
                 int sizeMB = Integer.parseInt(splitLine[2]);
                 Path filePath = createFile(pathString, sizeMB);
@@ -202,10 +183,16 @@ public class TestMovieDir {
         }
     }
 
-    // Simple test.  Note this will write to the file system into the resources dir, if run under gradle that will be
-    // build/resources/test/org/ericghara
-    public static void main(String[] args) {
-        new TestMovieDir("Example.csv");
+    /*Simple test.  Note this will write to the file system to the tmp dir
+    * the exact folder will be printed to std out*/
+    public static void main(String[] args) throws IOException {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("Improper usage, provide 1 argument " +
+                    "- the name of the csv file resource");
+        }
+        // Note this dir will persist after exit
+        Path tempDir = Files.createTempDirectory("TestMovieDir");
+        TestMovieDir tmd = new TestMovieDir(args[0], tempDir);
+        System.out.printf("A test movie dir was successfully created at: %s%n", tmd.getTestDir() );
     }
-
 }
