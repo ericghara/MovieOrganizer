@@ -113,6 +113,7 @@ public class TestMovieDir {
         try {
             Files.createDirectories(path);
         } catch (Exception e) {
+            e.printStackTrace();
             throw new IllegalArgumentException("Could not create dir " + path);
         }
     }
@@ -149,6 +150,7 @@ public class TestMovieDir {
             }
             Files.createFile(filePath);
         } catch (Exception e) {
+            e.printStackTrace();
             throw new IllegalArgumentException("Could not create the file:" + filePath + ".");
         }
         long bytes = 1024L * 1024L * sizeMB;
@@ -160,6 +162,7 @@ public class TestMovieDir {
             }
             writer.close();
         } catch (Exception e) {
+                e.printStackTrace();
                 throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath );
             }
         return filePath;

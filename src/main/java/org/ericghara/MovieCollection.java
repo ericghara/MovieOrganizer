@@ -74,26 +74,61 @@ public class MovieCollection {
     }
 
     void copyFile(Path source, Path destination) {
+        BiConsumerThrows<Path,Path> copyIO = (src, dest) ->
+                Files.copy(src, dest, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
+        TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords = (src, dest, srcFilename, destFilename) -> {
+            FileType type = src.getFileType(srcFilename)
+                               .orElseThrow(IllegalArgumentException::new); // this error cannot possibly be thrown
+            dest.addFile(destFilename, type);
+        };
+        moveOrCopyHelper(source, destination, copyIO, updateRecords);
+    }
+
+    void moveFile(Path source, Path destination) {
+        BiConsumerThrows<Path,Path> moveIO = (src, dest) ->
+                Files.move(src, dest, LinkOption.NOFOLLOW_LINKS);
+        TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords = (src, dest, srcFilename, destFilename) -> {
+            FileType type = src.getFileType(srcFilename)
+                    .orElseThrow(IllegalArgumentException::new); // this error cannot possibly be thrown
+            src.deleteFileRecord(srcFilename, type);
+            dest.addFile(destFilename, type);
+        };
+        moveOrCopyHelper(source, destination, moveIO, updateRecords);
+    }
+
+    /**
+     * Encapsulates shared functionality required by both moveFile and copyFile methods.  The IO operation
+     * may return any exception which will be caught and rethrown as an {@link IllegalArgumentException};
+     * @param source full filepath including filename
+     * @param destination full filepath including filename
+     * @param ioOperation BiConsumerThrows which performs file IO operations
+     * @param updateRecords TetraConsumer which performs MovieFolder record operations
+     * @see BiConsumerThrows
+     * @see TetraConsumer
+     */
+    private void moveOrCopyHelper(Path source, Path destination, BiConsumerThrows<Path, Path> ioOperation,
+                                  TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords ) {
         Path sourceParent = source.getParent();
         Path sourceFileName = source.getFileName();
-        MovieFolder sourceFolder = openFolder(sourceParent, 
-                "Unable to copy file because couldn't resolve the source path: " + source);
+        MovieFolder sourceFolder = openFolder(sourceParent,
+                "Could not resolve the source path: " + source);
         Path destinationParent = destination.getParent();
         Path destinationFileName = destination.getFileName();
         MovieFolder destinationFolder = openFolder(destinationParent,
-                "Unable to copy file because couldn't resolve the destination path: " + destination);
+                "Could not resolve the destination path: " + destination);
         FileType type = sourceFolder.getFileType(sourceFileName).orElseThrow( () ->
                 new IllegalArgumentException("The source file could not be located: " + source) );
         if (destinationFolder.containsFile(destinationFileName) ) {  // filesystem io
             throw new IllegalArgumentException("The destination folder already contains the file: " + source);
         }
         try {
-            Files.copy(source, destination, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
+            ioOperation.accept(source, destination);
         } catch (Exception e) {
-            throw new IllegalArgumentException("A low level error occured while copying " +
+            e.printStackTrace();
+            throw new IllegalArgumentException("A low level file IO error occurred " +
                     source +" to " + destination  + " - check file permissions.");
         }
-        destinationFolder.addFile(destinationFileName, type); // update MovieFolder object
+        updateRecords.accept(sourceFolder, destinationFolder, sourceFileName, destinationFileName);
     }
 
     private int getDepth(Path path) {
@@ -106,7 +141,7 @@ public class MovieCollection {
         Path rootPath;
         MovieFolder rootFolder;
         LinkedList<MovieFolder> folderStack;
-        private FileClassifier fileClassifier;
+        private final FileClassifier fileClassifier;
 
 
         private Collector(Path rootPath) {
@@ -217,9 +252,10 @@ public class MovieCollection {
                             }
                             @Override
                             public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                                exc.addSuppressed(new IOException());
                                 System.out.println("Suppressed an IOException in SimpleFileVisitor.FileVisitFailed: "
                                         + file + ".");
+                                exc.printStackTrace();
+                                exc.addSuppressed(new IOException());
                                 return FileVisitResult.CONTINUE;
                             }
                             @Override
@@ -244,6 +280,19 @@ public class MovieCollection {
             return walkStream.build();
         }
 
+
+    }
+
+    @FunctionalInterface
+    public interface TetraConsumer<T, U, V, X> {
+
+        void accept(T t, U u, V v, X x);
+    }
+
+    @FunctionalInterface
+    public interface BiConsumerThrows<T, U> {
+
+        void accept(T t, U u) throws Exception;
 
     }
 

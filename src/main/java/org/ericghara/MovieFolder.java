@@ -129,6 +129,25 @@ class MovieFolder {
         return id.isPresent() ? Optional.of(fileTypes[id.getAsInt()] ) : Optional.empty();
     }
 
+    /**
+     * Deletes record of the file from this {@code MovieFolder} object.  The file <em>must</em> no longer
+     * be contained in this folder on the filesystem.
+     * @param filename - file targeted for record deletion (must be filename only)
+     * @param type - type of file to be deleted
+     * @see MovieFolder#deleteFile
+     */
+    public void deleteFileRecord(Path filename, FileType type) {
+        Path absPath = toAbsolutePath(filename);
+        if (Files.exists(absPath) ) {
+            throw new IllegalArgumentException("The file must be deleted from the filesystem" +
+                    " before its record can be updated: " + absPath);
+        }
+        if (!allFiles.get(type.id()).remove(filename) ) {
+            throw new IllegalArgumentException("Could not locate the file record for" +
+                    " deletion: " + absPath );
+        }
+    }
+
 
     boolean addFile(Path filename, FileType type) {
         FileClassifier.mustBeFilename(filename);
@@ -194,6 +213,7 @@ class MovieFolder {
         try {
             Files.delete(absPath);
         } catch (Exception e) {
+            e.printStackTrace();
             throw new IllegalArgumentException("The Directory " + absPath +
                     " could not be deleted, due to a low level error," +
                     "refer to the stack trace for more details." );
@@ -216,6 +236,7 @@ class MovieFolder {
         try {
             Files.delete(absPath);
         } catch (Exception e) {
+            e.printStackTrace();
             throw new IllegalArgumentException("Could not delete: " + absPath);
         }
     }
