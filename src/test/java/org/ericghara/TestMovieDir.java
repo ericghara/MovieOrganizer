@@ -64,8 +64,7 @@ public class TestMovieDir {
         try {
             scanner = new Scanner(file);
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Couldn't open the csv " + file);
+            throw new IllegalArgumentException("Couldn't open the csv " + file, e);
         }
         return scanner;
     }
@@ -76,8 +75,7 @@ public class TestMovieDir {
             URI csvPath = this.getClass().getResource(csvName).toURI();
             csv = new File(csvPath);
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Couldn't open the csv " + csvName);
+            throw new IllegalArgumentException("Couldn't open the csv " + csvName, e);
         }
         return csv;
     }
@@ -113,8 +111,7 @@ public class TestMovieDir {
         try {
             Files.createDirectories(path);
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Could not create dir " + path);
+            throw new IllegalArgumentException("Could not create dir " + path, e);
         }
     }
 
@@ -150,8 +147,7 @@ public class TestMovieDir {
             }
             Files.createFile(filePath);
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Could not create the file:" + filePath + ".");
+            throw new IllegalArgumentException("Could not create the file:" + filePath + ".", e);
         }
         long bytes = 1024L * 1024L * sizeMB;
         try {
@@ -162,8 +158,7 @@ public class TestMovieDir {
             }
             writer.close();
         } catch (Exception e) {
-                e.printStackTrace();
-                throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath );
+                throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath, e);
             }
         return filePath;
     }

@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -158,24 +160,53 @@ public class MovieCollectionTest {
         @Nested
         @DisplayName("MovieCollectionTest - Dir write tests")
         class DirWriteTests {
-            String DirWriteCSV = "deleteTopLevelDirs.csv";
             TestMovieDir testMovieDir;
             MovieCollection collection;
+            @TempDir Path tmpDir;
 
-            @BeforeEach
-            void setup(@TempDir Path tmpDir) {
-                testMovieDir = new TestMovieDir(DirWriteCSV, tmpDir);
+            void setup(String csv) {
+                testMovieDir = new TestMovieDir(csv, tmpDir);
                 collection = new MovieCollection(tmpDir.toString());
             }
 
-            @Test()
+            @ParameterizedTest
+            @ValueSource(strings = {"deleteTopLevelDirs.csv"} )
             @DisplayName("deleteFolder - Single level deletion of empty folders")
-            void deleteFileTest() {
+            void deleteFolder(String csv) {
+                setup(csv);
                 Iterable<Path> dirs = testMovieDir.getDirs();
                 dirs.forEach((p) -> {
                     collection.deleteFolder(p);
                     Assertions.assertFalse(Files.exists(p, LinkOption.NOFOLLOW_LINKS));
                 });
+            }
+
+            @ParameterizedTest
+            @ValueSource(strings = {"deepDirs.csv"} )
+            @DisplayName("moveFolder - move all folders into the root dir")
+            void moveFolderToRoot(String csv) {
+                setup(csv);
+                Stream.Builder<Path> dirStream = Stream.builder();
+                testMovieDir.getFiles().forEach((f) -> dirStream.add(f.getParent()));
+                testMovieDir.getDirs().forEach(dirStream::add);
+                Path rootDir = collection.getRootPath();
+                dirStream.build().forEach( (d) -> {
+                    Path rel = rootDir.relativize(d);
+                    Path last = rootDir;
+                    for (Path rp: rel) {
+                        Path src = last.resolve(rp);
+                        Path dst = rootDir.resolve(rp);
+                        last = dst;
+                        if (Files.exists(src, LinkOption.NOFOLLOW_LINKS) && !src.equals(dst) ) {
+                            collection.moveFolder(src, dst);
+                            Assertions.assertFalse(Files.exists(src, LinkOption.NOFOLLOW_LINKS) );
+                            Assertions.assertTrue(Files.exists(dst, LinkOption.NOFOLLOW_LINKS) );
+                            Assertions.assertFalse(collection.containsFolder(src) );
+                            Assertions.assertTrue(collection.containsFolder(dst) );
+                            Assertions.assertEquals(collection.openFolder(dst).orElseThrow(IllegalArgumentException::new).getDepth(), 1);
+                        }
+                    }
+                } );
             }
         }
     }

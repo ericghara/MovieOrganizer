@@ -1,6 +1,7 @@
 package org.ericghara;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,13 +9,29 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 enum FileType {
-    Movie(0), Sub(1), Unusual(2), PossiblyJunk(3);
+    Folder(-1), Movie(0), Sub(1), Unusual(2), PossiblyJunk(3);
+
+    static int NUM_FILE_TYPES = 4; // FileTypes indexed in allFiles array;
+    static int OFFSET = FileType.values().length - NUM_FILE_TYPES;
 
     private final int id;
+
+    static int numFileTypes() {
+        return NUM_FILE_TYPES; }
+
+    static int offset() {
+        return OFFSET;
+    }
+
+    static FileType getFileType(int id) {
+        int i = OFFSET + id;
+        return FileType.values()[i];
+    }
 
     FileType(int id) {
         this.id = id;
@@ -27,50 +44,45 @@ enum FileType {
 }
 
 class MovieFolder {
-    private final Path folderPath;
-    private final int depth;
     private final HashMap<Path, MovieFolder> folders;
     private final ArrayList<HashSet<Path>> allFiles;
+    private Path folderPath;
+    private int depth;
 
     MovieFolder(Path path, int depth) {
         folderPath = path.toAbsolutePath();
         this.depth = depth;
         folders = new HashMap<>();
-        allFiles = new ArrayList<>(4);
+        allFiles = new ArrayList<>(FileType.numFileTypes() );
         Arrays.asList(FileType.values()).forEach((v) -> allFiles.add(new HashSet<>()));
     }
 
-    /**
-     * Returns true if the file is contained in this folder, false if not.  Finds any file irrespective of
-     * {@code FileType}.
-     * @param filename must be only the filename, cannot have the parent
-     * @return boolean
-     */
-    public boolean containsFile(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        return getFileType(filename).isPresent();
+    public boolean contains(Path name, FileType type) {
+        FileClassifier.mustBeFilename(name);
+        return getFiles(type).contains(name);
     }
 
-    public boolean containsFile(Path filename, FileType type) {
-        FileClassifier.mustBeFilename(filename);
-        return allFiles.get(type.id() ).contains(filename);
+    public boolean containsFile(Path name) {
+        Optional<FileType> file = getFileType(name);
+        return file.isPresent();
     }
 
-    public boolean containsFolder(Path folderName) {
-        FileClassifier.mustBeFilename(folderName);
-        return folders.containsKey(folderName);
+    public int getNum(FileType type) {
+        return getFiles(type).size();
     }
 
-    public int getNumFolders() {
-        return folders.size();
-    }
-
-    public int getNumMovies() {
-        return getMovies().size();
-    }
-
-    public int getNumPossiblyJunk() {
-        return getPossiblyJunk().size();
+    private Set<?> getFiles(FileType type) {
+        int id = type.id();
+        if (id >= 0)  {
+            return allFiles.get(id);
+        }
+        else if (type.equals(FileType.Folder) ) {
+            return folders.keySet();
+        }
+        else {
+            throw new IllegalArgumentException("The given FileType has not been fully implemented: "
+                    + type.name() );
+        }
     }
 
     public Path getFolderPath() {
@@ -86,17 +98,24 @@ class MovieFolder {
         return folderPath.toString();
     }
 
-    HashMap<Path, MovieFolder> getFolders() {
-        return folders;
+    void addFile(Path filename, FileType type) {
+        FileClassifier.mustBeFilename(filename);
+        boolean success = allFiles.get(type.id() ).add(filename);
+        if (!success) {
+            throw new IllegalArgumentException(String.format(
+                    "The folder: %s already contains a file named %s", this, filename) );
+        }
     }
 
     void addFolder(MovieFolder folder) {
         Path folderName = folder.getFolderPath().getFileName();
+        Path fullPath = getFolderPath().resolve(folderName);
+        if (!Files.exists(fullPath, LinkOption.NOFOLLOW_LINKS) ) {
+            throw new IllegalArgumentException("A MovieFolder reference cannot be made for the folder because" +
+                    "it does not exist in this location: " + fullPath);
+        }
+        folder.changePath(fullPath, getDepth()+1);
         folders.put(folderName, folder);
-    }
-
-    public int getNumUnusuals() {
-        return getUnusuals().size();
     }
 
     /**
@@ -104,8 +123,7 @@ class MovieFolder {
      * @return true if empty, false if contains fails and/or subfolders
      */
     public boolean isEmpty() {
-        int numFiles = allFiles.stream().map(HashSet::size).reduce(0, Integer::sum);
-        return numFiles == 0 && folders.size() == 0;
+        return Stream.of(FileType.values() ).allMatch( (t) -> getFiles(t).isEmpty() );
     }
 
     public Path toAbsolutePath(Path filename) {
@@ -121,124 +139,39 @@ class MovieFolder {
 
     public Optional<FileType> getFileType(Path filename) {
         FileClassifier.mustBeFilename(filename);
-        final FileType[] fileTypes = FileType.values();
-        final int NumFileTypes = fileTypes.length;
-        OptionalInt id = IntStream.range(0, NumFileTypes)
+        OptionalInt id = IntStream.range(0, FileType.numFileTypes() )
                 .filter( (i) -> allFiles.get(i).contains(filename) )
                 .findFirst();
-        return id.isPresent() ? Optional.of(fileTypes[id.getAsInt()] ) : Optional.empty();
+        return id.isPresent() ? Optional.of(FileType.getFileType(id.getAsInt() ) ) : Optional.empty();
     }
 
     /**
-     * Deletes record of the file from this {@code MovieFolder} object.  The file <em>must</em> no longer
+     * Deletes record from this {@code MovieFolder} object.  The file/dir <em>must</em> no longer
      * be contained in this folder on the filesystem.
-     * @param filename - file targeted for record deletion (must be filename only)
+     * @param name - file targeted for record deletion (must be a name only)
      * @param type - type of file to be deleted
-     * @see MovieFolder#deleteFile
+     * @see MovieCollection#deleteFile
      */
-    public void deleteFileRecord(Path filename, FileType type) {
-        Path absPath = toAbsolutePath(filename);
-        if (Files.exists(absPath) ) {
-            throw new IllegalArgumentException("The file must be deleted from the filesystem" +
+    public void deleteRecord(Path name, FileType type) {
+        Path absPath = toAbsolutePath(name);
+        if (Files.exists(absPath, LinkOption.NOFOLLOW_LINKS) ) {
+            throw new IllegalArgumentException("The file/folder must be deleted from the filesystem" +
                     " before its record can be updated: " + absPath);
         }
-        if (!allFiles.get(type.id()).remove(filename) ) {
-            throw new IllegalArgumentException("Could not locate the file record for" +
+        if (!getFiles(type).remove(name) ) { // perform remove and confirm key existed
+            throw new IllegalArgumentException("Could not locate the record for" +
                     " deletion: " + absPath );
         }
     }
-
-
-    boolean addFile(Path filename, FileType type) {
-        FileClassifier.mustBeFilename(filename);
-        return allFiles.get(type.id() ).add(filename);
-    }
-
-    void addSub(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getSubs().add(filename);
-    }
-
-    private HashSet<Path> getSubs() {
-        return allFiles.get(FileType.Sub.id());
-    }
-
-    int getNumSubs() {
-        return getSubs().size();
-    }
-
-    void addMovie(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getMovies().add(filename);
-    }
-
-    private HashSet<Path> getMovies() {
-        return allFiles.get(FileType.Movie.id());
-    }
-
-
-
-    void addUnusual(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getUnusuals().add(filename);
-    }
-
-    private HashSet<Path> getUnusuals() {
-        return allFiles.get(FileType.Unusual.id());
-    }
-
-
-
-    void addPossiblyJunk(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        getPossiblyJunk().add(filename);
-    }
-
-    private HashSet<Path> getPossiblyJunk() {
-        return allFiles.get(FileType.PossiblyJunk.id());
-    }
-
-
 
     Optional<MovieFolder> getFolder(Path folderName) {
         FileClassifier.mustBeFilename(folderName);
         return Optional.ofNullable(folders.get(folderName) );
     }
 
-    void deleteFolder(Path folderName) {
-        Path absPath = toAbsolutePath(folderName);
-        if (!containsFolder(folderName) ) {
-            throw new IllegalArgumentException("Was unable to locate the folder for deletion: " + absPath );
-        }
-        try {
-            Files.delete(absPath);
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("The Directory " + absPath +
-                    " could not be deleted, due to a low level error," +
-                    "refer to the stack trace for more details." );
-        }
-    }
-
-    /**
-     * Deletes the specified file.
-     * @param filename name of file to be deleted, path must not have any other components
-     */
-    void deleteFile(Path filename) {
-        FileClassifier.mustBeFilename(filename);
-        boolean success = Stream.of(FileType.values())
-                                .anyMatch( (type) -> allFiles.get(type.id()).remove(filename));
-        Path absPath = toAbsolutePath(filename);
-        if (!success) {
-            throw new IllegalArgumentException("Could not locate the file:"
-                    + absPath );
-        }
-        try {
-            Files.delete(absPath);
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Could not delete: " + absPath);
-        }
+    private void changePath(Path path, int depth) {
+        this.folderPath = path;
+        this.depth = depth;
     }
 
     Stream<Path> getAllFiles() {

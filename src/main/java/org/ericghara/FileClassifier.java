@@ -110,8 +110,7 @@ class FileClassifier {
         try {
             sizeBytes = Files.size(path);
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException("Couldn't open file: " + path + ".");
+            throw new IllegalArgumentException("Couldn't open file: " + path + ".", e);
         }
         return sizeBytes/ONE_MB > sizeMB;
     }
