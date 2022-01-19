@@ -13,12 +13,13 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedList;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class MovieCollection {
 
-    private MovieFolder rootFolder;
+    private final MovieFolder rootFolder;
 
     public MovieCollection(String pathString) {
         Path rootPath = FileSystems.getDefault().getPath(pathString).toAbsolutePath();
@@ -58,27 +59,12 @@ public class MovieCollection {
         return openFolder(p).orElseThrow( () -> new IllegalArgumentException(exceptionMsg) );
     }
 
-    void deleteFolder(Path path) {
-        FileClassifier.mustBeAbsolutePath(path);
-        Path parent = path.getParent();
-        Path folderName = path.getFileName();
-        MovieFolder parentFolder = openFolder(parent, "Could not locate the folder: " + path );
-        try {
-            Files.delete(path);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("The Directory " + path +
-                    " could not be deleted, due to a low level error," +
-                    "refer to the stack trace for more details.", e );
-        }
-        parentFolder.deleteRecord(folderName, FileType.Folder);
-    }
-
     void deleteFile(Path path) {
         BiConsumerThrows<Path,Path> copyIO = (src, nul) ->
                 Files.delete(src);
         TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords = (src, nul0, filename, nul1) -> {
             FileType type = src.getFileType(filename)
-                    .orElseThrow(IllegalArgumentException::new); // this error cannot possibly be thrown
+                    .orElseThrow(IllegalArgumentException::new); // this exception will never be thrown
             src.deleteRecord(filename, type);
         };
         fileIOHelper(path, null, copyIO, updateRecords);
@@ -89,7 +75,7 @@ public class MovieCollection {
                 Files.copy(src, dest, StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS);
         TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords = (src, dest, srcFilename, destFilename) -> {
             FileType type = src.getFileType(srcFilename)
-                               .orElseThrow(IllegalArgumentException::new); // this error cannot possibly be thrown
+                               .orElseThrow(IllegalArgumentException::new); // this exception will never be thrown
             dest.addFile(destFilename, type);
         };
         fileIOHelper(source, destination, copyIO, updateRecords);
@@ -100,7 +86,7 @@ public class MovieCollection {
                 Files.move(src, dest, LinkOption.NOFOLLOW_LINKS);
         TetraConsumer<MovieFolder, MovieFolder, Path, Path> updateRecords = (src, dest, srcFilename, destFilename) -> {
             FileType type = src.getFileType(srcFilename)
-                    .orElseThrow(IllegalArgumentException::new); // this error cannot possibly be thrown
+                    .orElseThrow(IllegalArgumentException::new); // this exception will never be thrown
             src.deleteRecord(srcFilename, type);
             dest.addFile(destFilename, type);
         };
@@ -130,7 +116,7 @@ public class MovieCollection {
                 new IllegalArgumentException("The source file could not be located: " + source) );
         Path destinationFileName = null;
         MovieFolder destinationFolder = null;
-        if (Objects.nonNull(destination) ) {
+        if (Objects.nonNull(destination) ) { // support for operations with  1 or 2 targets
             Path destinationParent = destination.getParent();
             destinationFileName = destination.getFileName();
             destinationFolder = openFolder(destinationParent,
@@ -151,25 +137,59 @@ public class MovieCollection {
         updateRecords.accept(sourceFolder, destinationFolder, sourceFileName, destinationFileName);
     }
 
-    void moveFolder(Path origin, Path destination) {
+    void moveFolder(Path source, Path destination) {
         BiConsumerThrows<Path,Path> moveIO = (src, dest) -> Files.move(src,dest, LinkOption.NOFOLLOW_LINKS);
-        TriConsumer<MovieFolder, MovieFolder, MovieFolder> updateRecords = (srcFolder, srcParent, dstParent) -> {
+        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> updateRecords = (srcFolder, srcParent, dstParent, dstFolderName) -> {
             srcParent.deleteRecord(srcFolder.getFolderPath().getFileName(), FileType.Folder);
+            srcFolder.changePath(dstFolderName, -1); // set to dummy depth and new folder name
             dstParent.addFolder(srcFolder);
+            updateSubfolderPaths(srcFolder);
         };
-        folderIOHelper(origin, destination, moveIO, updateRecords);
+        folderIOHelper(source, destination, moveIO, updateRecords);
+    }
+
+    void copyFolder(Path source, Path destination) {
+        BiConsumerThrows<Path,Path> moveIO = (src, dest) -> { // copies only the folder (not contents)
+            Files.copy(src, dest, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
+        };
+        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> createRecords = (srcFolder, srcParent, dstParent, dstFolderName) -> {
+            int newDepth = dstParent.getDepth() + 1;
+            Path newPath = dstParent.toAbsolutePath(dstFolderName );
+            MovieFolder dstFolder = new MovieFolder(newPath, newDepth);
+            dstParent.addFolder(dstFolder);                   // add new folder record (no files added)
+            srcFolder.getAllFiles().forEach( (f) ->           // copy all files and update MovieFolder records
+                    copyFile(srcFolder.toAbsolutePath(f), dstFolder.toAbsolutePath(f) ) );
+        };
+        Function<Path, Path> toDest = (f) -> {         // generates destination path from src MovieFolder
+            Path relPath = source.relativize(f);
+            return destination.resolve(relPath);
+        };
+        // walks source subfolder tree and copies all folders and their contents to the destination
+        getSubFolders(source).map(MovieFolder::getFolderPath)
+                             .forEach( (f) ->
+                                     folderIOHelper(f, toDest.apply(f), moveIO, createRecords ) );
+    }
+
+    void deleteFolder(Path path) {
+        BiConsumerThrows<Path, Path> deleteIO = (target, nul) -> Files.delete(path);
+        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> updateRecords = (target, parent, nul, nul0) -> {
+            Path folderName = target.getFolderPath().getFileName();
+            parent.deleteRecord(folderName, FileType.Folder);
+        };
+        folderIOHelper(path, null, deleteIO, updateRecords);
     }
 
     void folderIOHelper(Path source, Path destination, BiConsumerThrows<Path, Path> ioOperation,
-                        TriConsumer<MovieFolder, MovieFolder, MovieFolder> recordOps ) {
+                        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> recordOps ) {
         MovieFolder srcFolder = openFolder(source).orElseThrow(
                 () -> new IllegalArgumentException("Could not open the source: " + source) );
-        MovieFolder srcParent = openFolder(source.getParent() ).orElseThrow(IllegalArgumentException::new); // will never be thrown
+        MovieFolder srcParent = openFolder(source.getParent(), "" ); // will never be thrown
         MovieFolder dstParent = null;
-        Path dstFileName = null;
+        Path dstFolderName = null;
         if (Objects.nonNull(destination) ) {
-            dstParent = openFolder(destination.getParent()).orElseThrow(
-                    () -> new IllegalArgumentException("Could not open the parent destination folder of: " + destination));
+            dstFolderName = destination.getFileName();
+            dstParent = openFolder(destination.getParent(),
+                    "Could not open the parent destination folder of: " + destination);
         }
         try {
             ioOperation.accept(source, destination);
@@ -177,11 +197,79 @@ public class MovieCollection {
             throw new IllegalArgumentException("A low level file IO error occurred " +
                     source +" to " + destination  + " - check folder permissions.", e);
         }
-         recordOps.accept(srcFolder, srcParent, dstParent);
+         recordOps.accept(srcFolder, srcParent, dstParent, dstFolderName);
+    }
+
+    /**
+     * Performs a breadth first search beginning at the origin subfolder.  The first folder to be returned in the
+     * search will always be the origin folder subsequent directories will be returned in the order of increasing
+     * depth from the origin directory, with directories occurring at the same depth being returned in an undefined
+     * order.
+     * @param origin MovieFolder to begin the search from
+     * @return Stream of the origin MovieFolder and all MovieFolders that are children of origin.
+     */
+    Stream<MovieFolder> getSubFolders(MovieFolder origin) {
+        Objects.requireNonNull(origin, "Received a null origin folder.");
+        Stream.Builder<MovieFolder> folders = Stream.builder();
+        LinkedList<MovieFolder> queue = new LinkedList<>();
+        queue.addLast(origin);
+        while (!queue.isEmpty()) {
+            IntStream.range(0, queue.size()).forEach((i) -> {
+                MovieFolder cur = queue.removeFirst();
+                folders.accept(cur);
+                cur.getFolders().forEach(queue::addLast);
+                });
+        }
+        return folders.build();
+    }
+
+    /**
+     * See {@link MovieCollection#getSubFolders(MovieFolder)}
+     * @param origin absolute path to the starting subfolder
+     * @return Stream of the origin MovieFolder and all MovieFolders that are children of origin.
+     */
+    Stream<MovieFolder> getSubFolders(Path origin) {
+        MovieFolder originFolder = openFolder(origin, "Could not open the source folder: " + origin);
+        return getSubFolders(originFolder);
+    }
+
+    private void updateSubfolderPaths(MovieFolder origin) {
+        getSubFolders(origin).forEach( (f) ->
+            f.getFolders().forEach(f::addFolder) );
     }
 
     private int getDepth(Path path) {
         return path.getNameCount() - getRootPath().getNameCount();
+    }
+
+    @FunctionalInterface
+    public interface BiConsumerThrows<T, U> {
+
+        void accept(T t, U u) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface TetraConsumer<T, U, V, X> {
+
+        void accept(T t, U u, V v, X x);
+    }
+
+    /**
+     * Simple test client that takes two arguments:
+     * <ol>
+     *     <li>Path to movie folder (may be relative or absolute)</li>
+     *     <li>The path to a folder within the movie folder (may be relative or absolute)</li>
+     * </ol>
+     * Prints to stdout the movie folder directory
+     * @param args path to a movie folder and a path to a folder within that folder
+     */
+    public static void main(String[] args) {
+        String pathString = args[0];
+        Path query = Paths.get(args[1]);
+        MovieCollection col = new MovieCollection(pathString);
+        Path absQuery = query.isAbsolute() ? query : col.getRootPath().resolve(query);
+        System.out.println(col.rootFolder);
+        System.out.println(col.openFolder(absQuery));
     }
 
     private static class Collector {
@@ -214,7 +302,7 @@ public class MovieCollection {
             }
         }
 
-        //Note override can't use outer class getDepth because no rootFolder has been defined
+        // note implemented differently than the outer getDepth method as rootFolder may be null
         private int getDepth(Path path) {
             return path.getNameCount() - rootPath.getNameCount();
         }
@@ -228,10 +316,10 @@ public class MovieCollection {
             int curDepth = currentDepth();
             int stackPops = curDepth -  placeAtDepth;
             if (stackPops < 0) {
-                throw new IllegalArgumentException("Calculated a negative number of stackPops which is impossible:" + path );
+                throw new IllegalArgumentException("Calculated a negative number of stackPops which is impossible: " + path );
             }
             IntStream.range(0, stackPops)
-                    .forEach((i) -> folderStack.removeLast());
+                     .forEach((i) -> folderStack.removeLast());
         return path;
         }
 
@@ -328,42 +416,5 @@ public class MovieCollection {
             }
             return walkStream.build();
         }
-    }
-
-    @FunctionalInterface
-    public interface TriConsumer<T, U, V> {
-
-        void accept(T t, U u, V v);
-    }
-
-    @FunctionalInterface
-    public interface TetraConsumer<T, U, V, X> {
-
-        void accept(T t, U u, V v, X x);
-    }
-
-    @FunctionalInterface
-    public interface BiConsumerThrows<T, U> {
-
-        void accept(T t, U u) throws Exception;
-
-    }
-
-    /**
-     * Simple test client that takes two arguments:
-     * <ol>
-     *     <li>Path to movie folder (may be relative or absolute)</li>
-     *     <li>The path to a folder within the movie folder (may be relative or absolute)</li>
-     * </ol>
-     * Prints to stdout the movie folder directory
-     * @param args path to a movie folder and a path to a folder within that folder
-     */
-    public static void main(String[] args) {
-        String pathString = args[0];
-        Path query = Paths.get(args[1]);
-        MovieCollection col = new MovieCollection(pathString);
-        Path absQuery = query.isAbsolute() ? query : col.getRootPath().resolve(query);
-        System.out.println(col.rootFolder);
-        System.out.println(col.openFolder(absQuery));
     }
 }

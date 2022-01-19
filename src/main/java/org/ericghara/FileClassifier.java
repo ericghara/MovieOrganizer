@@ -10,14 +10,14 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 class FileClassifier {
 
-    private static String[] VIDEO_EXTS = {"ASX", "GXF", "M2V", "M3U", "M4V", "MPEG1", "MPEG2", "MTS", "MXF",
+    private static final String[] VIDEO_EXTS = {"ASX", "GXF", "M2V", "M3U", "M4V", "MPEG1", "MPEG2", "MTS", "MXF",
             "OGM", "PLS", "BUP", "B4S", "CUE", "DIVX", "DV", "FLV", "M1V", "M2TS", "MKV", "MOV", "MPEG4",
             "TS", "VLC", "VOB", "XSPF", "DAT", "IFO", "3G2", "MPEG", "MPG", "OGG", "3GP", "WMV", "AVI", "ASF",
             "MP4", "M4P"};
-    private static String[] SUB_EXTS = {"SRT", "SUB", "IDX"};
+    private static final String[] SUB_EXTS = {"SRT", "SUB", "IDX"};
 
-    private Matcher videoMatcher;
-    private Matcher subMatcher;
+    private final Matcher videoMatcher;
+    private final Matcher subMatcher;
 
     FileClassifier() {
         videoMatcher = getMatcher(VIDEO_EXTS);
@@ -114,9 +114,4 @@ class FileClassifier {
         }
         return sizeBytes/ONE_MB > sizeMB;
     }
-
-//        boolean unusualFile(Path pathToFile) {
-//            return filesizeLargerThan(pathToFile, MIN_VIDEO_SIZE_MB) != isVideo(pathToFile);
-//        }
-
 }

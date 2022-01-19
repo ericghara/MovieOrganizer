@@ -4,7 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
@@ -16,8 +16,8 @@ import java.util.stream.Stream;
 enum FileType {
     Folder(-1), Movie(0), Sub(1), Unusual(2), PossiblyJunk(3);
 
-    static int NUM_FILE_TYPES = 4; // FileTypes indexed in allFiles array;
-    static int OFFSET = FileType.values().length - NUM_FILE_TYPES;
+    final static int NUM_FILE_TYPES = 4; // FileTypes indexed in allFiles array;
+    final static int OFFSET = FileType.values().length - NUM_FILE_TYPES;
 
     private final int id;
 
@@ -54,12 +54,13 @@ class MovieFolder {
         this.depth = depth;
         folders = new HashMap<>();
         allFiles = new ArrayList<>(FileType.numFileTypes() );
-        Arrays.asList(FileType.values()).forEach((v) -> allFiles.add(new HashSet<>()));
+        IntStream.range(0, FileType.numFileTypes() )
+                 .forEach( (i) -> allFiles.add(new HashSet<>() ) );
     }
 
     public boolean contains(Path name, FileType type) {
         FileClassifier.mustBeFilename(name);
-        return getFiles(type).contains(name);
+        return getFilenames(type).contains(name);
     }
 
     public boolean containsFile(Path name) {
@@ -68,10 +69,16 @@ class MovieFolder {
     }
 
     public int getNum(FileType type) {
-        return getFiles(type).size();
+        return getFilenames(type).size();
     }
 
-    private Set<?> getFiles(FileType type) {
+    /**
+     * Returns a path set of the specified FileType (including Folders)
+     *
+     * @param type The category File, or Folder
+     * @return all target paths matching the type
+     */
+    Set<Path> getFilenames(FileType type) {
         int id = type.id();
         if (id >= 0)  {
             return allFiles.get(id);
@@ -83,6 +90,10 @@ class MovieFolder {
             throw new IllegalArgumentException("The given FileType has not been fully implemented: "
                     + type.name() );
         }
+    }
+
+    Collection<MovieFolder> getFolders() {
+        return folders.values();
     }
 
     public Path getFolderPath() {
@@ -119,11 +130,11 @@ class MovieFolder {
     }
 
     /**
-     * Reports if this movie folder contains no files and no subfolders.
-     * @return true if empty, false if contains fails and/or subfolders
+     * Reports if this movie folder contains no files and no sub-folders.
+     * @return true if empty, false if contains fails and/or sub-folders
      */
     public boolean isEmpty() {
-        return Stream.of(FileType.values() ).allMatch( (t) -> getFiles(t).isEmpty() );
+        return Stream.of(FileType.values() ).allMatch( (t) -> getFilenames(t).isEmpty() );
     }
 
     public Path toAbsolutePath(Path filename) {
@@ -158,7 +169,7 @@ class MovieFolder {
             throw new IllegalArgumentException("The file/folder must be deleted from the filesystem" +
                     " before its record can be updated: " + absPath);
         }
-        if (!getFiles(type).remove(name) ) { // perform remove and confirm key existed
+        if (!getFilenames(type).remove(name) ) { // perform remove and confirm key existed
             throw new IllegalArgumentException("Could not locate the record for" +
                     " deletion: " + absPath );
         }
@@ -169,7 +180,7 @@ class MovieFolder {
         return Optional.ofNullable(folders.get(folderName) );
     }
 
-    private void changePath(Path path, int depth) {
+    void changePath(Path path, int depth) {
         this.folderPath = path;
         this.depth = depth;
     }

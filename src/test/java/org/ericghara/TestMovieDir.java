@@ -14,8 +14,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * This creates a dummy Movie dir from a csv file -- see Example.csv for details.
- * The idea is to trick other classes into seeing
+ * This creates a dummy Movie dir from a csv file -- see Example.csv for composition details.
+ * This is intended for testing methods that implement filesystem I/O operations.  All files
+ * are dummies that are just written with 0's to the specified file size.
  */
 public class TestMovieDir {
 
@@ -59,77 +60,6 @@ public class TestMovieDir {
         return dirs;
     }
 
-    private Scanner getFileScanner(File file) {
-        Scanner scanner;
-        try {
-            scanner = new Scanner(file);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Couldn't open the csv " + file, e);
-        }
-        return scanner;
-    }
-
-    private File getResourceFile(String csvName) {
-        File csv;
-        try {
-            URI csvPath = this.getClass().getResource(csvName).toURI();
-            csv = new File(csvPath);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Couldn't open the csv " + csvName, e);
-        }
-        return csv;
-    }
-
-    private void parse(Scanner csvScanner) {
-        for (int i = 0; csvScanner.hasNextLine(); i++) {
-            String line = hashComments.reset(csvScanner.nextLine()).replaceAll(""); // strip comments
-            String[] splitLine = whitespaceNotInQuotes.pattern().split(line); // split columns
-            if (splitLine.length >= 2 && textInQuotes.reset(splitLine[1]).find() ) {
-                splitLine[1] = textInQuotes.group(); // remove quotes
-            }
-            if (splitLine.length == 1 && splitLine[0].isEmpty()) { // ignore empty line (or a stripped comment line)
-                continue;
-            }
-            if (splitLine[0].equalsIgnoreCase("D") && splitLine.length == 2 ) { // directory
-                Path dirPath = createDir(splitLine[1]);
-                dirs.addLast(dirPath);
-            }
-            else if (splitLine[0].equalsIgnoreCase("F") && splitLine.length == 3) { // file
-                String pathString = splitLine[1];
-                int sizeMB = Integer.parseInt(splitLine[2]);
-                Path filePath = createFile(pathString, sizeMB);
-                files.addLast(filePath);
-            }
-            else {
-                throw new IllegalArgumentException("Couldn't parse line: " + i + ".");
-            }
-        }
-    }
-
-    private void createDir(Path path) {
-        mustBeAbsolute(path);
-        try {
-            Files.createDirectories(path);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Could not create dir " + path, e);
-        }
-    }
-
-
-    /**
-     * Creates a directory at the given relative path.  If the parent path to the directory does not yet exist,
-     * directories are created in order to complete the path.  The absolute path to the directory is constructed
-     * by merging {@code testDir}'s path with the {@code pathString}.
-     * @param pathString relative location of the new directory
-     * @return absolute path to the directory
-     */
-    private Path createDir(String pathString) {
-        Path absPath = testDir.resolve(pathString);
-        createDir(absPath);
-        return absPath;
-    }
-
-
     /**
      * Creates file of specified size in the given relative path.  The absolute path is constructed by merging
      * the {@code testDir} path with the given {@code pathString}.  Any new directories required to create a file
@@ -158,9 +88,79 @@ public class TestMovieDir {
             }
             writer.close();
         } catch (Exception e) {
-                throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath, e);
-            }
+            throw new IllegalArgumentException("Could not write " + sizeMB + "MB to: " + filePath, e);
+        }
         return filePath;
+    }
+
+    /**
+     * Creates a directory at the given relative path.  If the parent path to the directory does not yet exist,
+     * directories are created in order to complete the path.  The absolute path to the directory is constructed
+     * by merging {@code testDir}'s path with the {@code pathString}.
+     * @param pathString relative location of the new directory
+     * @return absolute path to the directory
+     */
+    private Path createDir(String pathString) {
+        Path absPath = testDir.resolve(pathString);
+        createDir(absPath);
+        return absPath;
+    }
+
+    private void createDir(Path path) {
+        mustBeAbsolute(path);
+        try {
+            Files.createDirectories(path);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Could not create dir " + path, e);
+        }
+    }
+
+    // Parse the csv, writing the dir/file structure to disk
+    private void parse(Scanner csvScanner) {
+        for (int i = 0; csvScanner.hasNextLine(); i++) {
+            String line = hashComments.reset(csvScanner.nextLine()).replaceAll(""); // strip comments
+            String[] splitLine = whitespaceNotInQuotes.pattern().split(line); // split columns
+            if (splitLine.length >= 2 && textInQuotes.reset(splitLine[1]).find() ) {
+                splitLine[1] = textInQuotes.group(); // remove quotes
+            }
+            if (splitLine.length == 1 && splitLine[0].isEmpty()) { // ignore empty line (or a stripped comment line)
+                continue;
+            }
+            if (splitLine[0].equalsIgnoreCase("D") && splitLine.length == 2 ) { // directory
+                Path dirPath = createDir(splitLine[1]);
+                dirs.addLast(dirPath);
+            }
+            else if (splitLine[0].equalsIgnoreCase("F") && splitLine.length == 3) { // file
+                String pathString = splitLine[1];
+                int sizeMB = Integer.parseInt(splitLine[2]);
+                Path filePath = createFile(pathString, sizeMB);
+                files.addLast(filePath);
+            }
+            else {
+                throw new IllegalArgumentException("Couldn't parse line: " + i + ".");
+            }
+        }
+    }
+
+    private Scanner getFileScanner(File file) {
+        Scanner scanner;
+        try {
+            scanner = new Scanner(file);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Couldn't open the csv " + file, e);
+        }
+        return scanner;
+    }
+
+    private File getResourceFile(String csvName) {
+        File csv;
+        try {
+            URI csvPath = this.getClass().getResource(csvName).toURI();
+            csv = new File(csvPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Couldn't open the csv " + csvName, e);
+        }
+        return csv;
     }
 
     private static Matcher compileMatcher(String regEx) {
@@ -181,8 +181,8 @@ public class TestMovieDir {
         }
     }
 
-    /*Simple test.  Note this will write to the file system to the tmp dir
-    * the exact folder will be printed to std out*/
+    /*Simple test, will write the file tree specified in the given csv to the
+    * /tmp/XXX dir (the exact path is printed to std out)*/
     public static void main(String[] args) throws IOException {
         if (args.length != 1) {
             throw new IllegalArgumentException("Improper usage, provide 1 argument " +

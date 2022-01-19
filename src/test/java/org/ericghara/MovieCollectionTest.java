@@ -15,7 +15,13 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 @TestInstance(Lifecycle.PER_CLASS)
@@ -156,57 +162,168 @@ public class MovieCollectionTest {
     }
 
 
-        @TestInstance(Lifecycle.PER_METHOD)
-        @Nested
-        @DisplayName("MovieCollectionTest - Dir write tests")
-        class DirWriteTests {
-            TestMovieDir testMovieDir;
-            MovieCollection collection;
-            @TempDir Path tmpDir;
+    @TestInstance(Lifecycle.PER_METHOD)
+    @Nested
+    @DisplayName("MovieCollectionTest - Dir write tests")
+    class DirWriteTests {
+        TestMovieDir testMovieDir;
+        MovieCollection collection;
+        @TempDir Path tmpDir;
 
-            void setup(String csv) {
-                testMovieDir = new TestMovieDir(csv, tmpDir);
-                collection = new MovieCollection(tmpDir.toString());
-            }
+        void setup(String csv) {
+            testMovieDir = new TestMovieDir(csv, tmpDir);
+            collection = new MovieCollection(tmpDir.toString());
+        }
 
-            @ParameterizedTest
-            @ValueSource(strings = {"deleteTopLevelDirs.csv"} )
-            @DisplayName("deleteFolder - Single level deletion of empty folders")
-            void deleteFolder(String csv) {
-                setup(csv);
-                Iterable<Path> dirs = testMovieDir.getDirs();
-                dirs.forEach((p) -> {
-                    collection.deleteFolder(p);
-                    Assertions.assertFalse(Files.exists(p, LinkOption.NOFOLLOW_LINKS));
-                });
-            }
+        @ParameterizedTest
+        @ValueSource(strings = {"deleteTopLevelDirs.csv"} )
+        @DisplayName("deleteFolder - Single level deletion of empty folders")
+        void deleteFolder(String csv) {
+            setup(csv);
+            Iterable<Path> dirs = testMovieDir.getDirs();
+            dirs.forEach((p) -> {
+                collection.deleteFolder(p);
+                Assertions.assertFalse(Files.exists(p, LinkOption.NOFOLLOW_LINKS));
+            });
+        }
 
-            @ParameterizedTest
-            @ValueSource(strings = {"deepDirs.csv"} )
-            @DisplayName("moveFolder - move all folders into the root dir")
-            void moveFolderToRoot(String csv) {
-                setup(csv);
-                Stream.Builder<Path> dirStream = Stream.builder();
-                testMovieDir.getFiles().forEach((f) -> dirStream.add(f.getParent()));
-                testMovieDir.getDirs().forEach(dirStream::add);
-                Path rootDir = collection.getRootPath();
-                dirStream.build().forEach( (d) -> {
-                    Path rel = rootDir.relativize(d);
-                    Path last = rootDir;
-                    for (Path rp: rel) {
-                        Path src = last.resolve(rp);
-                        Path dst = rootDir.resolve(rp);
-                        last = dst;
-                        if (Files.exists(src, LinkOption.NOFOLLOW_LINKS) && !src.equals(dst) ) {
-                            collection.moveFolder(src, dst);
-                            Assertions.assertFalse(Files.exists(src, LinkOption.NOFOLLOW_LINKS) );
-                            Assertions.assertTrue(Files.exists(dst, LinkOption.NOFOLLOW_LINKS) );
-                            Assertions.assertFalse(collection.containsFolder(src) );
-                            Assertions.assertTrue(collection.containsFolder(dst) );
-                            Assertions.assertEquals(collection.openFolder(dst).orElseThrow(IllegalArgumentException::new).getDepth(), 1);
-                        }
+        @ParameterizedTest
+        @ValueSource(strings = {"deepDirs.csv"} )
+        @DisplayName("moveFolder - move all folders into the root dir")
+        void moveFolderToRoot(String csv) {
+            setup(csv);
+            Stream.Builder<Path> dirStream = Stream.builder();
+            testMovieDir.getFiles().forEach((f) -> dirStream.add(f.getParent()));
+            testMovieDir.getDirs().forEach(dirStream::add);
+            Path rootDir = collection.getRootPath();
+            dirStream.build().forEach( (d) -> {
+                Path rel = rootDir.relativize(d);
+                Path last = rootDir;
+                for (Path rp: rel) {
+                    Path src = last.resolve(rp);
+                    Path dst = rootDir.resolve(rp);
+                    last = dst;
+                    if (Files.exists(src, LinkOption.NOFOLLOW_LINKS) && !src.equals(dst) ) {
+                        collection.moveFolder(src, dst);
+                        Assertions.assertFalse(Files.exists(src, LinkOption.NOFOLLOW_LINKS) );
+                        Assertions.assertTrue(Files.exists(dst, LinkOption.NOFOLLOW_LINKS) );
+                        Assertions.assertFalse(collection.containsFolder(src) );
+                        Assertions.assertTrue(collection.containsFolder(dst) );
+                        Assertions.assertEquals(1, collection.openFolder(dst)
+                                .orElseThrow(IllegalArgumentException::new)
+                                .getDepth());
                     }
-                } );
+                }
+            } );
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"deepDirs.csv"} )
+        @DisplayName("moveFolder - stack all folders")
+        void moveFolderStackAll(String csv) {
+            // only uses tests that have dir trees which lack branching (other than at root)
+            setup(csv);
+            Stream.Builder<Path> dirStream = Stream.builder();
+            testMovieDir.getFiles().forEach((f) -> dirStream.add(f.getParent()));
+            testMovieDir.getDirs().forEach(dirStream::add);
+            Path rootPath = collection.getRootPath();
+            Path dirStack = dirStream.build().reduce( null, (a,b) -> {
+                    if(Objects.isNull(a) ) {
+                        return b;
+                    }
+                    else {
+                        Path rel = rootPath.relativize(b);
+                        Path src = rootPath.resolve(rel.getName(0) ); // get depth 1 folder
+                        Path dst = a.resolve(rel.getName(0) ); // location at top of stack
+                        collection.moveFolder(src, dst);
+                        return a.resolve(rel); // update top of stack
+                    }
+            });
+            Assertions.assertTrue(collection.containsFolder(dirStack) );  // collection add records valid
+            Assertions.assertEquals(1,                           // collection delete records valid
+                    collection.openFolder(rootPath,"couldn't open root path").getNum(FileType.Folder));
+            Assertions.assertTrue(Files.exists(dirStack) );              // fileIO valid
+        }
+        @ParameterizedTest
+        @ValueSource(strings = {"Example.csv", "deepDirs.csv", "deleteTopLevelDirs.csv"})
+        @DisplayName("copyFolder - duplicate all the folders in the root directory, changing destination name during copy")
+        void copyFolderDuplicateRoot(String csv) {
+            // Example: initial, dir0, dir1, dir2; final dir0, dir0 (copy), dir1, dir1 (copy), dir2, dir2 (copy)
+            setup(csv);
+            final String SUFFIX = " (copy)"; // appended to all folder names to avoid duplicate names
+            Function<MovieFolder, Path> getDestination = (f) -> {
+                Path origin = f.getFolderPath();
+                Path originParent = origin.getParent();
+                String dirname = origin.getFileName().toString() + SUFFIX;
+                return originParent.resolve(dirname); // add SUFFIX to all paths
+            };
+            Consumer<MovieFolder> doCopy = orig ->
+                collection.copyFolder(orig.getFolderPath(), getDestination.apply(orig) );
+
+            Collection<MovieFolder> originalsCol =            // all MovieFolders of depth 1 before copy
+                    collection.openFolder(collection.getRootPath(), "couldn't open folder" )
+                              .getFolders();
+            LinkedList<MovieFolder> originals = new LinkedList<>(originalsCol);
+            originals.forEach(doCopy);  // actually perform the copy
+            LinkedList<MovieFolder> copies = new LinkedList<>(); // MovieFolders that should have been copied to depth 1
+            originals.forEach( (f) -> copies.addLast(
+                    collection.openFolder(getDestination.apply(f), "Couldn't open folder") ) );
+
+            for (MovieFolder o = originals.removeLast(), c = copies.removeLast();
+                 !originals.isEmpty();
+                 o = originals.removeLast(), c = copies.removeLast() ) {
+
+                ArrayList<Path> origContents = new ArrayList<>(); // all folders and files in o
+                collection.getSubFolders(o).peek( (f) -> origContents.add(f.getFolderPath() ) )
+                                           .map( (f) -> f.getAllFiles()
+                                                         .map(f::toAbsolutePath))
+                                           .forEach( (s) -> s.forEach(origContents::add) );
+                for (Path p: origContents) {
+                    Path relPath = o.getFolderPath().relativize(p);
+                    Path newPath = c.getFolderPath().resolve(relPath);
+                    // Filesystem assertions
+                    Assertions.assertTrue(Files.exists(newPath, LinkOption.NOFOLLOW_LINKS));
+                    Assertions.assertTrue(Files.exists(p, LinkOption.NOFOLLOW_LINKS));
+                    // Data structure assertions
+                    if (Files.isDirectory(newPath) ) {
+                        Assertions.assertTrue(collection.containsFolder(newPath) );
+                        Assertions.assertTrue(collection.containsFolder(p) );
+                    }
+                    else {
+                        Assertions.assertTrue(collection.containsFile(newPath) );
+                        Assertions.assertTrue(collection.containsFile(p) );
+                    }
+                }
             }
         }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"deepDirs.csv"} )
+        @DisplayName("copyFolder - stack all folders")
+        void copyFolderStackAll(String csv) {
+            // only uses tests that have dir trees which lack branching (other than at root)
+            setup(csv);
+            Stream.Builder<Path> dirStream = Stream.builder();
+            testMovieDir.getFiles().forEach((f) -> dirStream.add(f.getParent()));
+            testMovieDir.getDirs().forEach(dirStream::add);
+            Path rootPath = collection.getRootPath();
+            Path dirStack = dirStream.build().reduce( null, (a,b) -> {
+                if(Objects.isNull(a) ) {
+                    return b;
+                }
+                else {
+                    Path rel = rootPath.relativize(b);
+                    Path src = rootPath.resolve(rel.getName(0) ); // get depth 1 folder
+                    Path dst = a.resolve(rel.getName(0) ); // location at top of stack
+                    collection.copyFolder(src, dst);
+                    return a.resolve(rel); // update top of stack
+                }
+            });
+            Assertions.assertTrue(collection.containsFolder(dirStack) );  // collection add records valid
+            testMovieDir.getFiles().forEach( (f) -> Assertions.assertTrue(Files.exists(f, LinkOption.NOFOLLOW_LINKS) )  );
+            testMovieDir.getDirs().forEach( (d) -> Assertions.assertTrue(Files.exists(d, LinkOption.NOFOLLOW_LINKS) ) );
+            Assertions.assertTrue(Files.exists(dirStack) );              // fileIO valid
+        }
     }
+}
+
