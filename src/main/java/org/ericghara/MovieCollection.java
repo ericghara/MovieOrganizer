@@ -45,8 +45,10 @@ public class MovieCollection {
     Optional<MovieFolder> openFolder(Path path) {
         FileClassifier.mustBeAbsolutePath(path);
         Path rootPath = getRootPath();
-        Optional <MovieFolder> curFolder = path.startsWith(rootPath) ? Optional.of(rootFolder) : Optional.empty();
-        // Note: a for each loop of relativized paths doesn't work because path "" is considered to have a length 1
+        Optional <MovieFolder> curFolder =
+                path.startsWith(rootPath) ? Optional.of(rootFolder) : Optional.empty();
+        // Note: a for each loop of relativized paths doesn't work
+        // because path "" is considered to have a length 1
         for (int i = rootPath.getNameCount(); i < path.getNameCount()
                 && curFolder.isPresent(); i++) {
             curFolder = curFolder.get()
@@ -56,7 +58,8 @@ public class MovieCollection {
     }
 
     MovieFolder openFolder(Path p, String exceptionMsg)  {
-        return openFolder(p).orElseThrow( () -> new IllegalArgumentException(exceptionMsg) );
+        return openFolder(p).orElseThrow(
+                () -> new IllegalArgumentException(exceptionMsg) );
     }
 
     void deleteFile(Path path) {
@@ -137,10 +140,25 @@ public class MovieCollection {
         updateRecords.accept(sourceFolder, destinationFolder, sourceFileName, destinationFileName);
     }
 
+
+    /**
+     * Movies a directory subtree, including files, to a new destination.
+     * The source and destination should be children of the parent MovieCollection's {@code rootFolder}.
+     * This method performs both filesystem operations and updates to the MovieCollection data structure.
+     * @param source absolute path to the source folder to be moved
+     * @param destination absolute path to the new destination
+     */
     void moveFolder(Path source, Path destination) {
         BiConsumerThrows<Path,Path> moveIO = (src, dest) -> Files.move(src,dest, LinkOption.NOFOLLOW_LINKS);
-        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> updateRecords = (srcFolder, srcParent, dstParent, dstFolderName) -> {
-            srcParent.deleteRecord(srcFolder.getFolderPath().getFileName(), FileType.Folder);
+        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path>
+                updateRecords = (srcFolder,
+                                 srcParent,
+                                 dstParent,
+                                 dstFolderName) -> {
+            srcParent.deleteRecord(
+                    srcFolder.getFolderPath()
+                             .getFileName(),
+                    FileType.Folder);
             srcFolder.changePath(dstFolderName, -1); // set to dummy depth and new folder name
             dstParent.addFolder(srcFolder);
             updateSubfolderPaths(srcFolder);
@@ -148,11 +166,22 @@ public class MovieCollection {
         folderIOHelper(source, destination, moveIO, updateRecords);
     }
 
+    /**
+     * Copies an entire directory subtree, including files, to a new destination.
+     * The source and destination should be children of the parent MovieCollection's {@code rootFolder}.
+     * This method performs both filesystem operations and updates to the MovieCollection data structure.
+     * @param source absolute path to the source folder to be copied
+     * @param destination absolute path to the destination folder which will be created
+     */
     void copyFolder(Path source, Path destination) {
         BiConsumerThrows<Path,Path> moveIO = (src, dest) -> { // copies only the folder (not contents)
             Files.copy(src, dest, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
         };
-        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> createRecords = (srcFolder, srcParent, dstParent, dstFolderName) -> {
+        TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path>
+                createRecords = (srcFolder,
+                                 srcParent,
+                                 dstParent,
+                                 dstFolderName) -> {
             int newDepth = dstParent.getDepth() + 1;
             Path newPath = dstParent.toAbsolutePath(dstFolderName );
             MovieFolder dstFolder = new MovieFolder(newPath, newDepth);
@@ -170,6 +199,10 @@ public class MovieCollection {
                                      folderIOHelper(f, toDest.apply(f), moveIO, createRecords ) );
     }
 
+    /**
+     * Deletes an <em>empty</em> folder and removes folder from the {@link MovieCollection} data structure.
+     * @param path absolute path to a folder in the {@link MovieCollection}
+     */
     void deleteFolder(Path path) {
         BiConsumerThrows<Path, Path> deleteIO = (target, nul) -> Files.delete(path);
         TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> updateRecords = (target, parent, nul, nul0) -> {
@@ -179,6 +212,15 @@ public class MovieCollection {
         folderIOHelper(path, null, deleteIO, updateRecords);
     }
 
+    /**
+     * A method which systematizes folder IO operations by breaking them down into an I/O operation ({@code ioOperation})
+     * and a data record operation ({@code recordOps}).
+     * @param source full path to the source or target, must be provided
+     * @param destination full path to the destination, for operations with no destination, should be null
+     * @param ioOperation a {@link BiConsumerThrows} that takes source and destination arguments
+     * @param recordOps a {@link TetraConsumer} that takes source {@code MovieFolder}, source parent {@code MovieFolder},
+     *                  destination parent {@code MovieFolder} and destination {@code Path} arguments.
+     */
     void folderIOHelper(Path source, Path destination, BiConsumerThrows<Path, Path> ioOperation,
                         TetraConsumer<MovieFolder, MovieFolder, MovieFolder, Path> recordOps ) {
         MovieFolder srcFolder = openFolder(source).orElseThrow(
@@ -298,7 +340,8 @@ public class MovieCollection {
 
         private void mustBeDir(Path path) {
             if (!FileClassifier.isDir(path)) {
-                throw new IllegalArgumentException("Starting path must be a directory and cannot be a symlink");
+                throw new IllegalArgumentException(
+                        "Starting path must be a directory and cannot be a symlink");
             }
         }
 
@@ -316,7 +359,8 @@ public class MovieCollection {
             int curDepth = currentDepth();
             int stackPops = curDepth -  placeAtDepth;
             if (stackPops < 0) {
-                throw new IllegalArgumentException("Calculated a negative number of stackPops which is impossible: " + path );
+                throw new IllegalArgumentException(
+                        "Calculated a negative number of stackPops which is impossible: " + path );
             }
             IntStream.range(0, stackPops)
                      .forEach((i) -> folderStack.removeLast());

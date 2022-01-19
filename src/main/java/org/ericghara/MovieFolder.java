@@ -1,5 +1,6 @@
 package org.ericghara;
 
+import static org.ericghara.FileClassifier.mustBeFilename;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -59,7 +60,7 @@ class MovieFolder {
     }
 
     public boolean contains(Path name, FileType type) {
-        FileClassifier.mustBeFilename(name);
+        mustBeFilename(name);
         return getFilenames(type).contains(name);
     }
 
@@ -104,13 +105,30 @@ class MovieFolder {
         return depth;
     }
 
+    public float getFileSize(Path fileName) {
+        final float ONE_MB = 1024F; // KBs per MB
+        if (!containsFile(fileName) ) {
+            throw new IllegalArgumentException("The folder " + getFolderPath() +
+                    " does not contain the file: " + fileName);
+        }
+        Path absPath = toAbsolutePath(fileName);
+        long sizeKB = 0;
+        try {
+            sizeKB = Files.size(absPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "A low level I/O error occurred: " + absPath, e);
+        }
+        return sizeKB/ONE_MB;
+    }
+
     @Override
     public String toString(){
         return folderPath.toString();
     }
 
     void addFile(Path filename, FileType type) {
-        FileClassifier.mustBeFilename(filename);
+        mustBeFilename(filename);
         boolean success = allFiles.get(type.id() ).add(filename);
         if (!success) {
             throw new IllegalArgumentException(String.format(
@@ -138,7 +156,7 @@ class MovieFolder {
     }
 
     public Path toAbsolutePath(Path filename) {
-        FileClassifier.mustBeFilename(filename);
+        mustBeFilename(filename);
         return folderPath.resolve(filename);
     }
 
@@ -149,7 +167,7 @@ class MovieFolder {
     }
 
     public Optional<FileType> getFileType(Path filename) {
-        FileClassifier.mustBeFilename(filename);
+        mustBeFilename(filename);
         OptionalInt id = IntStream.range(0, FileType.numFileTypes() )
                 .filter( (i) -> allFiles.get(i).contains(filename) )
                 .findFirst();
@@ -176,7 +194,7 @@ class MovieFolder {
     }
 
     Optional<MovieFolder> getFolder(Path folderName) {
-        FileClassifier.mustBeFilename(folderName);
+        mustBeFilename(folderName);
         return Optional.ofNullable(folders.get(folderName) );
     }
 
